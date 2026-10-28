@@ -8,7 +8,10 @@ const {
   aggregatedMaterials,
   expandedRawMaterials,
   totalCost,
-  totalOwnedSavings
+  totalOwnedSavings,
+  hasOwnedMaterials,
+  setTotalOwnedMaterial,
+  resetOwnedMaterials
 } = useTransferCalculator()
 
 const expandSubCrafts = ref(true)
@@ -30,6 +33,11 @@ const displayedMaterials = computed<ResolvedIngredient[]>(() => {
 const hasSubCraftItems = computed(() =>
   aggregatedMaterials.value.some((m) => m.method === 'Craft' && m.subIngredients.length > 0)
 )
+
+const onShoppingOwnedInput = (itemId: string, maxQuantity: number, event: Event) => {
+  const target = event.target as HTMLInputElement
+  setTotalOwnedMaterial(itemId, target.value, maxQuantity)
+}
 
 const formatNumber = (val: number | null | undefined): string => {
   if (val === null || val === undefined || Number.isNaN(val)) return '—'
@@ -73,23 +81,34 @@ const getGradeTitleClass = (grade: number): string => {
         </h2>
       </div>
 
-      <div v-if="hasSubCraftItems" class="ql-segmented-bar">
+      <div class="flex items-center gap-2">
         <button
+          v-if="hasOwnedMaterials"
           type="button"
-          class="ql-segmented-btn"
-          :class="{ active: expandSubCrafts }"
-          @click="expandSubCrafts = true"
+          class="px-2.5 py-1 rounded-md bg-[#181b22] hover:bg-[#222631] border border-[#252934] text-[11px] font-medium text-[#cbd5e1] transition-colors"
+          @click="resetOwnedMaterials"
         >
-          Raw Materials
+          Clear owned
         </button>
-        <button
-          type="button"
-          class="ql-segmented-btn"
-          :class="{ active: !expandSubCrafts }"
-          @click="expandSubCrafts = false"
-        >
-          Stage Materials
-        </button>
+
+        <div v-if="hasSubCraftItems" class="ql-segmented-bar">
+          <button
+            type="button"
+            class="ql-segmented-btn"
+            :class="{ active: expandSubCrafts }"
+            @click="expandSubCrafts = true"
+          >
+            Raw Materials
+          </button>
+          <button
+            type="button"
+            class="ql-segmented-btn"
+            :class="{ active: !expandSubCrafts }"
+            @click="expandSubCrafts = false"
+          >
+            Stage Materials
+          </button>
+        </div>
       </div>
     </div>
 
@@ -98,12 +117,14 @@ const getGradeTitleClass = (grade: number): string => {
         <colgroup>
           <col />
           <col class="w-[104px]" />
-          <col class="w-[156px]" />
-          <col class="w-[140px]" />
+          <col class="w-[86px]" />
+          <col class="w-[148px]" />
+          <col class="w-[136px]" />
         </colgroup>
         <thead>
           <tr class="border-b border-[#1a1d24] text-[11px] text-[#7a818e]">
             <th class="py-2 px-4 font-normal">Item</th>
+            <th class="py-2 px-2.5 font-normal text-right">Owned</th>
             <th class="py-2 px-3 font-normal text-right">Required</th>
             <th class="py-2 px-3 font-normal text-right">Unit price</th>
             <th class="py-2 px-4 font-normal text-right">Cost ↓</th>
@@ -145,16 +166,38 @@ const getGradeTitleClass = (grade: number): string => {
                   >
                     {{ item.name }}
                   </div>
-                  <div v-if="item.allocatedOwned > 0" class="text-[11px] leading-tight mt-0.5 ql-num">
+                  <div class="text-[11px] leading-tight mt-0.5 ql-num">
                     <span v-if="item.remainingQuantity === 0" class="text-[#22c55e] font-medium">
-                      0 more needed ({{ item.allocatedOwned.toLocaleString('en-US') }} owned)
+                      0 more needed ({{ item.allocatedOwned.toLocaleString('en-US') }}/{{ item.quantity.toLocaleString('en-US') }})
                     </span>
-                    <span v-else class="text-[#eab308]">
-                      {{ item.remainingQuantity.toLocaleString('en-US') }} more needed ({{ item.allocatedOwned.toLocaleString('en-US') }} owned)
+                    <span v-else-if="item.allocatedOwned > 0" class="text-[#eab308]">
+                      {{ item.remainingQuantity.toLocaleString('en-US') }} more needed ({{ item.allocatedOwned.toLocaleString('en-US') }}/{{ item.quantity.toLocaleString('en-US') }})
+                    </span>
+                    <span v-else class="text-[#7a818e]">
+                      {{ item.remainingQuantity.toLocaleString('en-US') }} more needed
                     </span>
                   </div>
                 </div>
               </div>
+            </td>
+
+            <td class="py-2.5 px-2.5 text-right whitespace-nowrap">
+              <input
+                type="number"
+                min="0"
+                :max="item.quantity"
+                step="1"
+                placeholder="0"
+                :value="item.allocatedOwned || ''"
+                :aria-label="`Total Owned ${item.name}`"
+                class="w-full bg-[#181b22] hover:bg-[#1d212a] focus:bg-[#1d212a] border rounded px-2 py-1 text-right text-[12px] ql-num focus:outline-none transition-colors"
+                :class="
+                  item.allocatedOwned > 0
+                    ? 'border-[#22c55e]/50 text-[#22c55e] font-semibold'
+                    : 'border-[#252934] focus:border-[#3b82f6] text-white placeholder-[#4b515d]'
+                "
+                @input="onShoppingOwnedInput(item.id, item.quantity, $event)"
+              />
             </td>
 
             <td class="py-2.5 px-3 text-right ql-num whitespace-nowrap">
@@ -164,8 +207,13 @@ const getGradeTitleClass = (grade: number): string => {
               >
                 {{ item.remainingQuantity.toLocaleString('en-US') }}
               </div>
-              <div v-if="item.allocatedOwned > 0" class="text-[11px] text-[#646b78] leading-tight">
-                of {{ item.quantity.toLocaleString('en-US') }}
+              <div class="text-[11px] text-[#646b78] leading-tight">
+                <template v-if="item.allocatedOwned > 0">
+                  {{ item.allocatedOwned.toLocaleString('en-US') }}/{{ item.quantity.toLocaleString('en-US') }}
+                </template>
+                <template v-else>
+                  ×{{ item.quantity.toLocaleString('en-US') }}
+                </template>
               </div>
             </td>
 
@@ -205,7 +253,7 @@ const getGradeTitleClass = (grade: number): string => {
 
         <tfoot class="border-t border-[#1e222a] bg-[#0e1014]">
           <tr v-if="totalOwnedSavings > 0" class="border-b border-[#181b22]">
-            <td colspan="3" class="py-2 px-4 text-right text-[12px] text-[#8b92a0]">
+            <td colspan="4" class="py-2 px-4 text-right text-[12px] text-[#8b92a0]">
               Saved from owned materials
             </td>
             <td class="py-2 px-4 text-right text-[13px] font-semibold text-[#22c55e] ql-num whitespace-nowrap">
@@ -213,7 +261,7 @@ const getGradeTitleClass = (grade: number): string => {
             </td>
           </tr>
           <tr>
-            <td colspan="3" class="py-2.5 px-4 text-right text-[12px] text-[#8b92a0]">
+            <td colspan="4" class="py-2.5 px-4 text-right text-[12px] text-[#8b92a0]">
               Total cost
             </td>
             <td class="py-2.5 px-4 text-right text-[14px] font-bold text-white ql-num whitespace-nowrap">

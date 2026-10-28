@@ -280,6 +280,10 @@ export function makeStageOwnedKey(stage: number, itemId: string | number): strin
   return `${stage}:${itemId}`
 }
 
+export function makeRawOwnedKey(itemId: string | number): string {
+  return `raw:${itemId}`
+}
+
 export function calculateTransferPath(
   params: CalculateTransferParams
 ): TransferCalculationResult {
@@ -393,7 +397,7 @@ export function calculateTransferPath(
       const existing = aggregatedMap.get(ing.id)
       if (existing) {
         existing.quantity += ing.quantity
-        existing.ownedQuantity += ing.ownedQuantity
+        existing.ownedQuantity += ing.allocatedOwned
         existing.allocatedOwned += ing.allocatedOwned
         existing.remainingQuantity += ing.remainingQuantity
         existing.totalCost = existing.unitPrice * existing.quantity
@@ -401,6 +405,7 @@ export function calculateTransferPath(
       } else {
         aggregatedMap.set(ing.id, {
           ...ing,
+          ownedQuantity: ing.allocatedOwned,
           totalCost: ing.unitPrice * ing.quantity,
           remainingCost: ing.unitPrice * ing.remainingQuantity,
           subIngredients: ing.subIngredients.map((sub) => ({ ...sub }))
@@ -436,7 +441,7 @@ export function calculateTransferPath(
         const existingRaw = expandedRawMap.get(ing.id)
         if (existingRaw) {
           existingRaw.quantity += ing.quantity
-          existingRaw.ownedQuantity += ing.ownedQuantity
+          existingRaw.ownedQuantity += ing.allocatedOwned
           existingRaw.allocatedOwned += ing.allocatedOwned
           existingRaw.remainingQuantity += ing.remainingQuantity
           existingRaw.totalCost = existingRaw.unitPrice * existingRaw.quantity
@@ -444,12 +449,25 @@ export function calculateTransferPath(
         } else {
           expandedRawMap.set(ing.id, {
             ...ing,
+            ownedQuantity: ing.allocatedOwned,
             totalCost: ing.unitPrice * ing.quantity,
             remainingCost: ing.unitPrice * ing.remainingQuantity,
             subIngredients: ing.subIngredients.map((sub) => ({ ...sub }))
           })
         }
       }
+    }
+  }
+
+  for (const rawItem of expandedRawMap.values()) {
+    const rawKey = makeRawOwnedKey(rawItem.id)
+    const directRawOwned = Math.max(0, Math.floor(Number(ownedMaterials[rawKey]) || 0))
+    if (directRawOwned > 0 && !aggregatedMap.has(rawItem.id)) {
+      const extraAllocated = Math.min(rawItem.remainingQuantity, directRawOwned)
+      rawItem.allocatedOwned += extraAllocated
+      rawItem.ownedQuantity = rawItem.allocatedOwned
+      rawItem.remainingQuantity = Math.max(0, rawItem.remainingQuantity - extraAllocated)
+      rawItem.remainingCost = rawItem.remainingQuantity * rawItem.unitPrice
     }
   }
 
@@ -612,6 +630,53 @@ export const useTransferCalculator = () => {
     ownedMaterials.value = next
   }
 
+  const setTotalOwnedMaterial = (
+    itemId: string | number,
+    totalCount: number | string,
+    maxQuantity?: number
+  ) => {
+    const idStr = String(itemId)
+    let remainingToDistribute = Math.max(0, Math.floor(Number(totalCount) || 0))
+    if (typeof maxQuantity === 'number' && maxQuantity > 0) {
+      remainingToDistribute = Math.min(maxQuantity, remainingToDistribute)
+    }
+
+    const next = { ...ownedMaterials.value }
+    let matchedDirectStage = false
+
+    for (const step of calculation.value.steps) {
+      const stageKey = makeStageOwnedKey(step.stage, idStr)
+      if (step.isSkipped) {
+        delete next[stageKey]
+        continue
+      }
+
+      const ing = step.ingredients.find((i) => i.id === idStr)
+      if (!ing) continue
+
+      matchedDirectStage = true
+      const allocate = Math.min(ing.quantity, remainingToDistribute)
+      remainingToDistribute -= allocate
+
+      if (allocate <= 0) {
+        delete next[stageKey]
+      } else {
+        next[stageKey] = allocate
+      }
+    }
+
+    if (!matchedDirectStage) {
+      const rawKey = makeRawOwnedKey(idStr)
+      if (remainingToDistribute <= 0) {
+        delete next[rawKey]
+      } else {
+        next[rawKey] = remainingToDistribute
+      }
+    }
+
+    ownedMaterials.value = next
+  }
+
   const resetOwnedMaterials = () => {
     ownedMaterials.value = {}
   }
@@ -677,6 +742,7 @@ export const useTransferCalculator = () => {
     resetProcSkips,
     getStageOwnedMaterial,
     setStageOwnedMaterial,
+    setTotalOwnedMaterial,
     resetOwnedMaterials,
     calculation,
     steps,

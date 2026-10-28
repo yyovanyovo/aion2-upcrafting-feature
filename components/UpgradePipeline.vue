@@ -240,13 +240,13 @@ const getGradeTitleClass = (grade: number): string => {
                         v-if="!step.isSkipped && ing.remainingQuantity === 0"
                         class="text-[#22c55e] font-medium"
                       >
-                        0 more needed ({{ ing.allocatedOwned }} owned)
+                        0 more needed ({{ ing.allocatedOwned }}/{{ ing.quantity }})
                       </span>
                       <span
                         v-else-if="!step.isSkipped && ing.allocatedOwned > 0"
                         class="text-[#eab308]"
                       >
-                        {{ ing.remainingQuantity }} more needed ({{ ing.allocatedOwned }} owned)
+                        {{ ing.remainingQuantity }} more needed ({{ ing.allocatedOwned }}/{{ ing.quantity }})
                       </span>
                       <span v-else class="text-[#7a818e]">
                         {{ ing.remainingQuantity }} more needed
@@ -283,7 +283,12 @@ const getGradeTitleClass = (grade: number): string => {
                   {{ ing.remainingQuantity }}
                 </div>
                 <div class="text-[11px] text-[#646b78] leading-tight">
-                  ×{{ ing.quantity }}
+                  <template v-if="!step.isSkipped && ing.allocatedOwned > 0">
+                    {{ ing.allocatedOwned }}/{{ ing.quantity }}
+                  </template>
+                  <template v-else>
+                    ×{{ ing.quantity }}
+                  </template>
                 </div>
               </td>
 
