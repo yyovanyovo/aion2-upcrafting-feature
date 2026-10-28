@@ -8,7 +8,9 @@ const {
   steps,
   procSkips,
   skippableStages,
-  toggleProcSkip
+  toggleProcSkip,
+  getStageOwnedMaterial,
+  setStageOwnedMaterial
 } = useTransferCalculator()
 
 const brokenIcons = ref<Record<string, boolean>>({})
@@ -35,6 +37,11 @@ const isOddStageProcActive = (step: StageCalculationStep): boolean => {
   const nextEven = getNextEvenStage(step.stage)
   if (!nextEven) return false
   return Boolean(skippableStages.value[nextEven] && procSkips.value[nextEven])
+}
+
+const onOwnedInput = (stage: number, itemId: string, maxQuantity: number, event: Event) => {
+  const target = event.target as HTMLInputElement
+  setStageOwnedMaterial(stage, itemId, target.value, maxQuantity)
 }
 
 const getGradeFrameClass = (grade: number): string => {
@@ -151,11 +158,25 @@ const getGradeTitleClass = (grade: number): string => {
             <span>Simulate 25% Proc (Skip Stage {{ step.stage + 1 }})</span>
           </label>
 
-          <div
-            class="text-[14px] font-bold ql-num"
-            :class="step.isSkipped ? 'line-through text-[#22c55e]' : 'text-white'"
-          >
-            {{ formatNumber(step.stageTotalCost) }}
+          <div class="text-right ql-num">
+            <div
+              class="text-[14px] font-bold"
+              :class="
+                step.isSkipped
+                  ? 'line-through text-[#22c55e]'
+                  : step.remainingStageTotalCost === 0
+                    ? 'text-[#22c55e]'
+                    : 'text-white'
+              "
+            >
+              {{ formatNumber(step.isSkipped ? step.stageTotalCost : step.remainingStageTotalCost) }}
+            </div>
+            <div
+              v-if="!step.isSkipped && step.remainingStageTotalCost < step.stageTotalCost"
+              class="text-[11px] text-[#646b78] line-through leading-tight"
+            >
+              {{ formatNumber(step.stageTotalCost) }}
+            </div>
           </div>
         </div>
       </div>
@@ -164,13 +185,15 @@ const getGradeTitleClass = (grade: number): string => {
         <table class="w-full table-fixed text-left border-collapse">
           <colgroup>
             <col />
-            <col class="w-[96px]" />
-            <col class="w-[156px]" />
-            <col class="w-[140px]" />
+            <col class="w-[104px]" />
+            <col class="w-[86px]" />
+            <col class="w-[148px]" />
+            <col class="w-[136px]" />
           </colgroup>
           <thead>
             <tr class="border-b border-[#1a1d24] text-[11px] text-[#7a818e]">
               <th class="py-2 px-4 font-normal">Item</th>
+              <th class="py-2 px-2.5 font-normal text-right">Owned</th>
               <th class="py-2 px-3 font-normal text-right">Required</th>
               <th class="py-2 px-3 font-normal">Unit price</th>
               <th class="py-2 px-4 font-normal text-right">Cost</th>
@@ -181,6 +204,7 @@ const getGradeTitleClass = (grade: number): string => {
               v-for="ing in step.ingredients"
               :key="`${step.stage}-${ing.id}`"
               class="hover:bg-[#14171e] transition-colors"
+              :class="{ 'bg-[#0f1915]/40': !step.isSkipped && ing.remainingQuantity === 0 }"
             >
               <td class="py-2.5 px-4">
                 <div class="flex items-center gap-3">
@@ -204,20 +228,59 @@ const getGradeTitleClass = (grade: number): string => {
                   <div class="min-w-0">
                     <div
                       class="text-[13px] font-medium leading-tight"
-                      :class="getGradeTitleClass(ing.grade)"
+                      :class="[
+                        getGradeTitleClass(ing.grade),
+                        !step.isSkipped && ing.remainingQuantity === 0 ? 'line-through opacity-75' : ''
+                      ]"
                     >
                       {{ ing.name }}
                     </div>
-                    <div class="text-[11px] text-[#7a818e] leading-tight mt-0.5 ql-num">
-                      {{ ing.quantity }} more needed
+                    <div class="text-[11px] leading-tight mt-0.5 ql-num">
+                      <span
+                        v-if="!step.isSkipped && ing.remainingQuantity === 0"
+                        class="text-[#22c55e] font-medium"
+                      >
+                        0 more needed ({{ ing.allocatedOwned }} owned)
+                      </span>
+                      <span
+                        v-else-if="!step.isSkipped && ing.allocatedOwned > 0"
+                        class="text-[#eab308]"
+                      >
+                        {{ ing.remainingQuantity }} more needed ({{ ing.allocatedOwned }} owned)
+                      </span>
+                      <span v-else class="text-[#7a818e]">
+                        {{ ing.remainingQuantity }} more needed
+                      </span>
                     </div>
                   </div>
                 </div>
               </td>
 
+              <td class="py-2.5 px-2.5 text-right whitespace-nowrap">
+                <input
+                  type="number"
+                  min="0"
+                  :max="ing.quantity"
+                  step="1"
+                  placeholder="0"
+                  :value="getStageOwnedMaterial(step.stage, ing.id) || ''"
+                  :aria-label="`Stage ${step.stage} Owned ${ing.name}`"
+                  class="w-full bg-[#181b22] hover:bg-[#1d212a] focus:bg-[#1d212a] border rounded px-2 py-1 text-right text-[12px] ql-num focus:outline-none transition-colors"
+                  :class="
+                    getStageOwnedMaterial(step.stage, ing.id) > 0
+                      ? 'border-[#22c55e]/50 text-[#22c55e] font-semibold'
+                      : 'border-[#252934] focus:border-[#3b82f6] text-white placeholder-[#4b515d]'
+                  "
+                  @input="onOwnedInput(step.stage, ing.id, ing.quantity, $event)"
+                />
+              </td>
+
               <td class="py-2.5 px-3 text-right ql-num whitespace-nowrap">
-                <div class="text-[13px] font-semibold text-white leading-tight">
-                  {{ ing.quantity }}
+                <div
+                  class="text-[13px] font-semibold leading-tight"
+                  :class="!step.isSkipped && ing.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-white'"
+                >
+                  {{ ing.remainingQuantity }}
                 </div>
                 <div class="text-[11px] text-[#646b78] leading-tight">
                   ×{{ ing.quantity }}
@@ -256,8 +319,19 @@ const getGradeTitleClass = (grade: number): string => {
                 </div>
               </td>
 
-              <td class="py-2.5 px-4 text-right ql-num font-bold text-white whitespace-nowrap">
-                {{ ing.isPriceMissing ? '—' : formatNumber(ing.totalCost) }}
+              <td class="py-2.5 px-4 text-right ql-num whitespace-nowrap">
+                <div
+                  class="font-bold leading-tight"
+                  :class="!step.isSkipped && ing.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-white'"
+                >
+                  {{ ing.isPriceMissing ? '—' : formatNumber(ing.remainingCost) }}
+                </div>
+                <div
+                  v-if="!step.isSkipped && ing.allocatedOwned > 0 && !ing.isPriceMissing"
+                  class="text-[11px] text-[#646b78] line-through leading-tight"
+                >
+                  {{ formatNumber(ing.totalCost) }}
+                </div>
               </td>
             </tr>
           </tbody>

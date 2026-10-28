@@ -21,6 +21,8 @@ export type AcquisitionMethod = 'Buy' | 'Craft'
 
 export type ProcSkipsMap = Record<2 | 4 | 6, boolean>
 
+export type OwnedMaterialsMap = Record<string, number>
+
 export const DRAGON_STAGE_PREFIXES: Record<DragonRace, Record<DragonStageNumber, string>> = {
   light: {
     1: 'True Dragon Lord ',
@@ -193,6 +195,9 @@ export interface ResolvedIngredient {
   icon: string
   grade: number
   quantity: number
+  ownedQuantity: number
+  allocatedOwned: number
+  remainingQuantity: number
   mainCategory: string
   subCategory: string
   isPrecursorEquipment: boolean
@@ -203,6 +208,7 @@ export interface ResolvedIngredient {
   craftPrice: number | null
   unitPrice: number
   totalCost: number
+  remainingCost: number
   method: AcquisitionMethod
   acquisitionMethod: AcquisitionMethod
   isNpcSource: boolean
@@ -232,7 +238,9 @@ export interface StageCalculationStep {
   excludedEquipmentItems: DragonRecipeInputItem[]
   goldCost: number
   materialCost: number
+  remainingMaterialCost: number
   stageTotalCost: number
+  remainingStageTotalCost: number
   effectiveCost: number
   potentialSavings: number
 }
@@ -248,11 +256,13 @@ export interface TransferCalculationResult {
   aggregatedMaterials: ResolvedIngredient[]
   expandedRawMaterials: ResolvedIngredient[]
   totalMaterialCost: number
+  remainingMaterialCost: number
   totalGoldCost: number
   totalCostWithoutProcs: number
   expectedProcSavings: number
   expectedAverageCost: number
   totalProcSavings: number
+  totalOwnedSavings: number
   totalCost: number
   targetItemMarketListing: Listing | null
   targetItemMarketPrice: number | null

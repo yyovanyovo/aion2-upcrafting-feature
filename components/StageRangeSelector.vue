@@ -15,10 +15,12 @@ const {
   procSkips,
   skippableStages,
   skippedSteps,
+  hasOwnedMaterials,
   setCurrentStage,
   setTargetStage,
   toggleProcSkip,
-  resetProcSkips
+  resetProcSkips,
+  resetOwnedMaterials
 } = useTransferCalculator()
 
 const brokenIcons = ref<Record<string, boolean>>({})
@@ -185,6 +187,15 @@ const resetRange = () => {
           @click="resetProcSkips"
         >
           Clear simulated procs
+        </button>
+      </div>
+      <div v-if="hasOwnedMaterials">
+        <button
+          type="button"
+          class="bg-[#1b1f27] hover:bg-[#232833] border border-[#282d38] rounded-md px-3 py-1.5 text-[12px] font-semibold text-white transition-colors"
+          @click="resetOwnedMaterials"
+        >
+          Clear owned materials
         </button>
       </div>
     </div>

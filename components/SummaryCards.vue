@@ -9,6 +9,7 @@ const {
   expectedProcSavings,
   expectedAverageCost,
   totalProcSavings,
+  totalOwnedSavings,
   totalCost
 } = useTransferCalculator()
 
@@ -17,9 +18,13 @@ const expectedDiscountPercent = computed(() => {
   return ((expectedProcSavings.value / totalCostWithoutProcs.value) * 100).toFixed(1)
 })
 
+const totalSavingsCombined = computed(() => {
+  return totalProcSavings.value + totalOwnedSavings.value
+})
+
 const simulatedDiscountPercent = computed(() => {
   if (!totalCostWithoutProcs.value) return 0
-  return ((totalProcSavings.value / totalCostWithoutProcs.value) * 100).toFixed(1)
+  return ((totalSavingsCombined.value / totalCostWithoutProcs.value) * 100).toFixed(1)
 })
 
 const formatNumber = (val: number | null | undefined): string => {
@@ -67,17 +72,20 @@ const formatNumber = (val: number | null | undefined): string => {
         </div>
         <div
           class="text-[26px] font-bold leading-tight mt-0.5 ql-num"
-          :class="skippedSteps.length > 0 ? 'text-[#22c55e]' : 'text-white'"
+          :class="skippedSteps.length > 0 || totalOwnedSavings > 0 ? 'text-[#22c55e]' : 'text-white'"
         >
           {{ formatNumber(totalCost) }}
         </div>
         <div class="text-[12px] text-[#7a818e] mt-1 ql-num">
-          <template v-if="totalProcSavings > 0">
-            -{{ formatNumber(totalProcSavings) }} saved ({{ simulatedDiscountPercent }}% off)
+          <template v-if="totalSavingsCombined > 0">
+            -{{ formatNumber(totalSavingsCombined) }} saved ({{ simulatedDiscountPercent }}% off)
           </template>
           <template v-else>
             {{ skippedSteps.length }} proc skips active
           </template>
+        </div>
+        <div v-if="totalOwnedSavings > 0" class="text-[12px] text-[#22c55e] ql-num">
+          -{{ formatNumber(totalOwnedSavings) }} from owned materials
         </div>
       </div>
     </section>

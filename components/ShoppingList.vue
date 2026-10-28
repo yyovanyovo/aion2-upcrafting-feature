@@ -7,7 +7,8 @@ import type { ResolvedIngredient } from '~/types/dragon'
 const {
   aggregatedMaterials,
   expandedRawMaterials,
-  totalCost
+  totalCost,
+  totalOwnedSavings
 } = useTransferCalculator()
 
 const expandSubCrafts = ref(true)
@@ -96,7 +97,7 @@ const getGradeTitleClass = (grade: number): string => {
       <table class="w-full table-fixed text-left border-collapse">
         <colgroup>
           <col />
-          <col class="w-[96px]" />
+          <col class="w-[104px]" />
           <col class="w-[156px]" />
           <col class="w-[140px]" />
         </colgroup>
@@ -113,6 +114,7 @@ const getGradeTitleClass = (grade: number): string => {
             v-for="item in displayedMaterials"
             :key="item.id"
             class="hover:bg-[#14171e] transition-colors"
+            :class="{ 'bg-[#0f1915]/40': item.remainingQuantity === 0 }"
           >
             <td class="py-2.5 px-4">
               <div class="flex items-center gap-3">
@@ -133,17 +135,38 @@ const getGradeTitleClass = (grade: number): string => {
                   </span>
                 </div>
 
-                <span
-                  class="text-[13px] font-medium"
-                  :class="getGradeTitleClass(item.grade)"
-                >
-                  {{ item.name }}
-                </span>
+                <div class="min-w-0">
+                  <div
+                    class="text-[13px] font-medium leading-tight"
+                    :class="[
+                      getGradeTitleClass(item.grade),
+                      item.remainingQuantity === 0 ? 'line-through opacity-75' : ''
+                    ]"
+                  >
+                    {{ item.name }}
+                  </div>
+                  <div v-if="item.allocatedOwned > 0" class="text-[11px] leading-tight mt-0.5 ql-num">
+                    <span v-if="item.remainingQuantity === 0" class="text-[#22c55e] font-medium">
+                      0 more needed ({{ item.allocatedOwned.toLocaleString('en-US') }} owned)
+                    </span>
+                    <span v-else class="text-[#eab308]">
+                      {{ item.remainingQuantity.toLocaleString('en-US') }} more needed ({{ item.allocatedOwned.toLocaleString('en-US') }} owned)
+                    </span>
+                  </div>
+                </div>
               </div>
             </td>
 
-            <td class="py-2.5 px-3 text-right ql-num font-semibold text-white whitespace-nowrap">
-              {{ item.quantity.toLocaleString('en-US') }}
+            <td class="py-2.5 px-3 text-right ql-num whitespace-nowrap">
+              <div
+                class="text-[13px] font-semibold leading-tight"
+                :class="item.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-white'"
+              >
+                {{ item.remainingQuantity.toLocaleString('en-US') }}
+              </div>
+              <div v-if="item.allocatedOwned > 0" class="text-[11px] text-[#646b78] leading-tight">
+                of {{ item.quantity.toLocaleString('en-US') }}
+              </div>
             </td>
 
             <td class="py-2.5 px-3 text-right ql-num whitespace-nowrap">
@@ -163,13 +186,32 @@ const getGradeTitleClass = (grade: number): string => {
               </div>
             </td>
 
-            <td class="py-2.5 px-4 text-right ql-num font-bold text-white whitespace-nowrap">
-              {{ item.isPriceMissing ? '—' : formatNumber(item.totalCost) }}
+            <td class="py-2.5 px-4 text-right ql-num whitespace-nowrap">
+              <div
+                class="font-bold leading-tight"
+                :class="item.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-white'"
+              >
+                {{ item.isPriceMissing ? '—' : formatNumber(item.remainingCost) }}
+              </div>
+              <div
+                v-if="item.allocatedOwned > 0 && !item.isPriceMissing"
+                class="text-[11px] text-[#646b78] line-through leading-tight"
+              >
+                {{ formatNumber(item.totalCost) }}
+              </div>
             </td>
           </tr>
         </tbody>
 
         <tfoot class="border-t border-[#1e222a] bg-[#0e1014]">
+          <tr v-if="totalOwnedSavings > 0" class="border-b border-[#181b22]">
+            <td colspan="3" class="py-2 px-4 text-right text-[12px] text-[#8b92a0]">
+              Saved from owned materials
+            </td>
+            <td class="py-2 px-4 text-right text-[13px] font-semibold text-[#22c55e] ql-num whitespace-nowrap">
+              -{{ formatNumber(totalOwnedSavings) }}
+            </td>
+          </tr>
           <tr>
             <td colspan="3" class="py-2.5 px-4 text-right text-[12px] text-[#8b92a0]">
               Total cost

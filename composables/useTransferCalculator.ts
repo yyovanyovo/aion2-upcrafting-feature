@@ -3,6 +3,7 @@ import {
   type DragonStageNumber,
   type CurrentStageOption,
   type ProcSkipsMap,
+  type OwnedMaterialsMap,
   type AcquisitionMethod,
   type DragonRecipe,
   type DragonRecipeInputItem,
@@ -30,6 +31,7 @@ export interface CalculateTransferParams {
   currentStage: CurrentStageOption
   targetStage: DragonStageNumber
   procSkips: ProcSkipsMap
+  ownedMaterials?: OwnedMaterialsMap
   context: IngredientResolutionContext
 }
 
@@ -228,6 +230,9 @@ export function resolveIngredientCost(
     icon: item.icon,
     grade: item.grade,
     quantity,
+    ownedQuantity: 0,
+    allocatedOwned: 0,
+    remainingQuantity: quantity,
     mainCategory: item.mainCategory || '',
     subCategory: item.subCategory || '',
     isPrecursorEquipment: isPrecursor,
@@ -238,6 +243,7 @@ export function resolveIngredientCost(
     craftPrice,
     unitPrice,
     totalCost,
+    remainingCost: totalCost,
     method,
     acquisitionMethod: method,
     isNpcSource: method === 'Buy' && isNpcSource,
@@ -270,10 +276,14 @@ export function isStageSkippable(
   return true
 }
 
+export function makeStageOwnedKey(stage: number, itemId: string | number): string {
+  return `${stage}:${itemId}`
+}
+
 export function calculateTransferPath(
   params: CalculateTransferParams
 ): TransferCalculationResult {
-  const { chain, currentStage, targetStage, procSkips, context } = params
+  const { chain, currentStage, targetStage, procSkips, ownedMaterials = {}, context } = params
 
   if (!chain || targetStage <= currentStage) {
     return {
@@ -287,11 +297,13 @@ export function calculateTransferPath(
       aggregatedMaterials: [],
       expandedRawMaterials: [],
       totalMaterialCost: 0,
+      remainingMaterialCost: 0,
       totalGoldCost: 0,
       totalCostWithoutProcs: 0,
       expectedProcSavings: 0,
       expectedAverageCost: 0,
       totalProcSavings: 0,
+      totalOwnedSavings: 0,
       totalCost: 0,
       targetItemMarketListing: null,
       targetItemMarketPrice: null
@@ -313,19 +325,34 @@ export function calculateTransferPath(
       stageRecipe.recipeInputItems || []
     )
 
-    const resolvedIngredients = included.map((ing) =>
-      resolveIngredientCost(ing, context)
-    )
-
-    const materialCost = resolvedIngredients.reduce((sum, ing) => sum + ing.totalCost, 0)
-    const goldCost = typeof stageRecipe.goldCost === 'number' ? stageRecipe.goldCost : 0
-    const stageTotalCost = materialCost + goldCost
-
     const skippable = isStageSkippable(stageNum, currentStage, targetStage, chain)
     const skipped =
       skippable &&
       (stageNum === 2 || stageNum === 4 || stageNum === 6) &&
       Boolean(procSkips[stageNum])
+
+    const resolvedIngredients = included.map((ing) => {
+      const base = resolveIngredientCost(ing, context)
+      const stageKey = makeStageOwnedKey(stageNum, base.id)
+      const stageOwned = Math.max(0, Math.floor(Number(ownedMaterials[stageKey]) || 0))
+      const allocated = skipped ? 0 : Math.min(base.quantity, stageOwned)
+      const remainingQty = skipped ? base.quantity : Math.max(0, base.quantity - allocated)
+      const remainingCost = remainingQty * base.unitPrice
+
+      return {
+        ...base,
+        ownedQuantity: stageOwned,
+        allocatedOwned: allocated,
+        remainingQuantity: remainingQty,
+        remainingCost
+      }
+    })
+
+    const materialCost = resolvedIngredients.reduce((sum, ing) => sum + ing.totalCost, 0)
+    const remainingMaterialCost = resolvedIngredients.reduce((sum, ing) => sum + ing.remainingCost, 0)
+    const goldCost = typeof stageRecipe.goldCost === 'number' ? stageRecipe.goldCost : 0
+    const stageTotalCost = materialCost + goldCost
+    const remainingStageTotalCost = remainingMaterialCost + goldCost
 
     steps.push({
       stage: stageNum,
@@ -347,8 +374,10 @@ export function calculateTransferPath(
       excludedEquipmentItems: excluded,
       goldCost,
       materialCost,
+      remainingMaterialCost,
       stageTotalCost,
-      effectiveCost: skipped ? 0 : stageTotalCost,
+      remainingStageTotalCost,
+      effectiveCost: skipped ? 0 : remainingStageTotalCost,
       potentialSavings: stageTotalCost
     })
   }
@@ -364,26 +393,42 @@ export function calculateTransferPath(
       const existing = aggregatedMap.get(ing.id)
       if (existing) {
         existing.quantity += ing.quantity
+        existing.ownedQuantity += ing.ownedQuantity
+        existing.allocatedOwned += ing.allocatedOwned
+        existing.remainingQuantity += ing.remainingQuantity
         existing.totalCost = existing.unitPrice * existing.quantity
+        existing.remainingCost = existing.unitPrice * existing.remainingQuantity
       } else {
         aggregatedMap.set(ing.id, {
           ...ing,
+          totalCost: ing.unitPrice * ing.quantity,
+          remainingCost: ing.unitPrice * ing.remainingQuantity,
           subIngredients: ing.subIngredients.map((sub) => ({ ...sub }))
         })
       }
 
       if (ing.method === 'Craft' && ing.subIngredients.length > 0) {
         for (const sub of ing.subIngredients) {
-          const neededSubQty = sub.quantity * ing.quantity
+          const baseSubQty = sub.quantity * ing.quantity
+          const remainingSubQty = sub.quantity * ing.remainingQuantity
+          const allocatedSubQty = baseSubQty - remainingSubQty
           const existingRaw = expandedRawMap.get(sub.id)
           if (existingRaw) {
-            existingRaw.quantity += neededSubQty
+            existingRaw.quantity += baseSubQty
+            existingRaw.ownedQuantity += allocatedSubQty
+            existingRaw.allocatedOwned += allocatedSubQty
+            existingRaw.remainingQuantity += remainingSubQty
             existingRaw.totalCost = existingRaw.unitPrice * existingRaw.quantity
+            existingRaw.remainingCost = existingRaw.unitPrice * existingRaw.remainingQuantity
           } else {
             expandedRawMap.set(sub.id, {
               ...sub,
-              quantity: neededSubQty,
-              totalCost: sub.unitPrice * neededSubQty
+              quantity: baseSubQty,
+              ownedQuantity: allocatedSubQty,
+              allocatedOwned: allocatedSubQty,
+              remainingQuantity: remainingSubQty,
+              totalCost: sub.unitPrice * baseSubQty,
+              remainingCost: sub.unitPrice * remainingSubQty
             })
           }
         }
@@ -391,10 +436,16 @@ export function calculateTransferPath(
         const existingRaw = expandedRawMap.get(ing.id)
         if (existingRaw) {
           existingRaw.quantity += ing.quantity
+          existingRaw.ownedQuantity += ing.ownedQuantity
+          existingRaw.allocatedOwned += ing.allocatedOwned
+          existingRaw.remainingQuantity += ing.remainingQuantity
           existingRaw.totalCost = existingRaw.unitPrice * existingRaw.quantity
+          existingRaw.remainingCost = existingRaw.unitPrice * existingRaw.remainingQuantity
         } else {
           expandedRawMap.set(ing.id, {
             ...ing,
+            totalCost: ing.unitPrice * ing.quantity,
+            remainingCost: ing.unitPrice * ing.remainingQuantity,
             subIngredients: ing.subIngredients.map((sub) => ({ ...sub }))
           })
         }
@@ -410,7 +461,9 @@ export function calculateTransferPath(
   )
   const expectedAverageCost = Math.max(0, totalCostWithoutProcs - expectedProcSavings)
   const totalMaterialCost = activeSteps.reduce((sum, s) => sum + s.materialCost, 0)
+  const remainingMaterialCost = activeSteps.reduce((sum, s) => sum + s.remainingMaterialCost, 0)
   const totalGoldCost = activeSteps.reduce((sum, s) => sum + s.goldCost, 0)
+  const totalOwnedSavings = Math.max(0, totalMaterialCost - remainingMaterialCost)
   const totalCost = activeSteps.reduce((sum, s) => sum + s.effectiveCost, 0)
   const totalProcSavings = skippedSteps.reduce((sum, s) => sum + s.stageTotalCost, 0)
 
@@ -459,11 +512,13 @@ export function calculateTransferPath(
     aggregatedMaterials: Array.from(aggregatedMap.values()),
     expandedRawMaterials: Array.from(expandedRawMap.values()),
     totalMaterialCost,
+    remainingMaterialCost,
     totalGoldCost,
     totalCostWithoutProcs,
     expectedProcSavings,
     expectedAverageCost,
     totalProcSavings,
+    totalOwnedSavings,
     totalCost,
     targetItemMarketListing,
     targetItemMarketPrice: targetItemMarketListing ? targetItemMarketListing.minPrice : null
@@ -477,6 +532,7 @@ const procSkips = ref<ProcSkipsMap>({
   4: false,
   6: false
 })
+const ownedMaterials = ref<OwnedMaterialsMap>({})
 
 export const useTransferCalculator = () => {
   const dragonChains = useDragonChains()
@@ -531,6 +587,39 @@ export const useTransferCalculator = () => {
     }
   }
 
+  const getStageOwnedMaterial = (stage: number, itemId: string | number): number => {
+    const key = makeStageOwnedKey(stage, itemId)
+    return Math.max(0, Math.floor(Number(ownedMaterials.value[key]) || 0))
+  }
+
+  const setStageOwnedMaterial = (
+    stage: number,
+    itemId: string | number,
+    count: number | string,
+    maxQuantity?: number
+  ) => {
+    const key = makeStageOwnedKey(stage, itemId)
+    let parsed = Math.max(0, Math.floor(Number(count) || 0))
+    if (typeof maxQuantity === 'number' && maxQuantity > 0) {
+      parsed = Math.min(maxQuantity, parsed)
+    }
+    const next = { ...ownedMaterials.value }
+    if (parsed <= 0) {
+      delete next[key]
+    } else {
+      next[key] = parsed
+    }
+    ownedMaterials.value = next
+  }
+
+  const resetOwnedMaterials = () => {
+    ownedMaterials.value = {}
+  }
+
+  const hasOwnedMaterials = computed<boolean>(() => {
+    return Object.values(ownedMaterials.value).some((v) => v > 0)
+  })
+
   const calculation = computed<TransferCalculationResult>(() => {
     const oppositeRace = dragonChains.selectedRace.value === 'light' ? 'dark' : 'light'
     const counterpartChain = dragonChains.getChain(oppositeRace, dragonChains.selectedSlot.value)
@@ -540,6 +629,7 @@ export const useTransferCalculator = () => {
       currentStage: currentStage.value,
       targetStage: targetStage.value,
       procSkips: procSkips.value,
+      ownedMaterials: ownedMaterials.value,
       context: {
         npcPrices: dragonChains.npcPrices.value,
         listingsMap: dragonChains.listingsMap.value,
@@ -556,11 +646,13 @@ export const useTransferCalculator = () => {
   const aggregatedMaterials = computed(() => calculation.value.aggregatedMaterials)
   const expandedRawMaterials = computed(() => calculation.value.expandedRawMaterials)
   const totalMaterialCost = computed(() => calculation.value.totalMaterialCost)
+  const remainingMaterialCost = computed(() => calculation.value.remainingMaterialCost)
   const totalGoldCost = computed(() => calculation.value.totalGoldCost)
   const totalCostWithoutProcs = computed(() => calculation.value.totalCostWithoutProcs)
   const expectedProcSavings = computed(() => calculation.value.expectedProcSavings)
   const expectedAverageCost = computed(() => calculation.value.expectedAverageCost)
   const totalProcSavings = computed(() => calculation.value.totalProcSavings)
+  const totalOwnedSavings = computed(() => calculation.value.totalOwnedSavings)
   const totalCost = computed(() => calculation.value.totalCost)
   const targetItemMarketListing = computed(() => calculation.value.targetItemMarketListing)
   const targetItemMarketPrice = computed(() => calculation.value.targetItemMarketPrice)
@@ -575,12 +667,17 @@ export const useTransferCalculator = () => {
     currentStage,
     targetStage,
     procSkips,
+    ownedMaterials,
+    hasOwnedMaterials,
     skippableStages,
     setCurrentStage,
     setTargetStage,
     toggleProcSkip,
     setProcSkip,
     resetProcSkips,
+    getStageOwnedMaterial,
+    setStageOwnedMaterial,
+    resetOwnedMaterials,
     calculation,
     steps,
     activeSteps,
@@ -588,11 +685,13 @@ export const useTransferCalculator = () => {
     aggregatedMaterials,
     expandedRawMaterials,
     totalMaterialCost,
+    remainingMaterialCost,
     totalGoldCost,
     totalCostWithoutProcs,
     expectedProcSavings,
     expectedAverageCost,
     totalProcSavings,
+    totalOwnedSavings,
     totalCost,
     targetItemMarketListing,
     targetItemMarketPrice,
