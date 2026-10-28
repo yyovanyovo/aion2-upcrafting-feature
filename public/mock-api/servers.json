@@ -1,0 +1,642 @@
+{
+    "result": {
+        "data": [
+            {
+                "serverId": 1101,
+                "name": "Siel",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1102,
+                "name": "Nezekan",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1103,
+                "name": "Vaizel",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1104,
+                "name": "Kaisinel",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1105,
+                "name": "Yustiel",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1106,
+                "name": "Ariel",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1107,
+                "name": "Fregion",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1108,
+                "name": "Meslamtaeda",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1109,
+                "name": "Hithanya",
+                "region": "nae",
+                "race": 1
+            },
+            {
+                "serverId": 1201,
+                "name": "Siel",
+                "region": "naw",
+                "race": 1
+            },
+            {
+                "serverId": 1202,
+                "name": "Nezekan",
+                "region": "naw",
+                "race": 1
+            },
+            {
+                "serverId": 1203,
+                "name": "Vaizel",
+                "region": "naw",
+                "race": 1
+            },
+            {
+                "serverId": 1204,
+                "name": "Kaisinel",
+                "region": "naw",
+                "race": 1
+            },
+            {
+                "serverId": 1205,
+                "name": "Yustiel",
+                "region": "naw",
+                "race": 1
+            },
+            {
+                "serverId": 1301,
+                "name": "Siel",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1302,
+                "name": "Nezekan",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1303,
+                "name": "Vaizel",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1304,
+                "name": "Kaisinel",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1305,
+                "name": "Yustiel",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1306,
+                "name": "Ariel",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1307,
+                "name": "Fregion",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1308,
+                "name": "Meslamtaeda",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1309,
+                "name": "Hithanya",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1310,
+                "name": "Nania",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1311,
+                "name": "Tahavatha",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1312,
+                "name": "Luteros",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1313,
+                "name": "Phernos",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1314,
+                "name": "Daminu",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1315,
+                "name": "Kasaka",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1316,
+                "name": "Bakarma",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1317,
+                "name": "Tsenka",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1318,
+                "name": "Kochi",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1319,
+                "name": "Ishtar",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1320,
+                "name": "Tiamat",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1321,
+                "name": "Gauss",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1322,
+                "name": "Lamuatan",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1323,
+                "name": "Nathara",
+                "region": "eu",
+                "race": 1
+            },
+            {
+                "serverId": 1401,
+                "name": "Siel",
+                "region": "la",
+                "race": 1
+            },
+            {
+                "serverId": 1402,
+                "name": "Nezekan",
+                "region": "la",
+                "race": 1
+            },
+            {
+                "serverId": 1403,
+                "name": "Vaizel",
+                "region": "la",
+                "race": 1
+            },
+            {
+                "serverId": 1404,
+                "name": "Kaisinel",
+                "region": "la",
+                "race": 1
+            },
+            {
+                "serverId": 1405,
+                "name": "Yustiel",
+                "region": "la",
+                "race": 1
+            },
+            {
+                "serverId": 1406,
+                "name": "Ariel",
+                "region": "la",
+                "race": 1
+            },
+            {
+                "serverId": 1501,
+                "name": "Siel",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1502,
+                "name": "Nezekan",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1503,
+                "name": "Vaizel",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1504,
+                "name": "Kaisinel",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1505,
+                "name": "Yustiel",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1506,
+                "name": "Ariel",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1507,
+                "name": "Fregion",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1508,
+                "name": "Meslamtaeda",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1509,
+                "name": "Hithanya",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 1510,
+                "name": "Nania",
+                "region": "as",
+                "race": 1
+            },
+            {
+                "serverId": 2101,
+                "name": "Israphel",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2102,
+                "name": "Zikel",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2103,
+                "name": "Triniel",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2104,
+                "name": "Lumiel",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2105,
+                "name": "Marchutan",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2106,
+                "name": "Azphel",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2107,
+                "name": "Ereshkigal",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2108,
+                "name": "Beritra",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2109,
+                "name": "Nemon",
+                "region": "nae",
+                "race": 2
+            },
+            {
+                "serverId": 2201,
+                "name": "Israphel",
+                "region": "naw",
+                "race": 2
+            },
+            {
+                "serverId": 2202,
+                "name": "Zikel",
+                "region": "naw",
+                "race": 2
+            },
+            {
+                "serverId": 2203,
+                "name": "Triniel",
+                "region": "naw",
+                "race": 2
+            },
+            {
+                "serverId": 2204,
+                "name": "Lumiel",
+                "region": "naw",
+                "race": 2
+            },
+            {
+                "serverId": 2205,
+                "name": "Marchutan",
+                "region": "naw",
+                "race": 2
+            },
+            {
+                "serverId": 2301,
+                "name": "Israphel",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2302,
+                "name": "Zikel",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2303,
+                "name": "Triniel",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2304,
+                "name": "Lumiel",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2305,
+                "name": "Marchutan",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2306,
+                "name": "Azphel",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2307,
+                "name": "Ereshkigal",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2308,
+                "name": "Beritra",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2309,
+                "name": "Nemon",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2310,
+                "name": "Hadala",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2311,
+                "name": "Ludra",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2312,
+                "name": "Ulgorn",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2313,
+                "name": "Munin",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2314,
+                "name": "Odar",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2315,
+                "name": "Zemurru",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2316,
+                "name": "Kromede",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2317,
+                "name": "Quai",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2318,
+                "name": "Baba",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2319,
+                "name": "Fafnir",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2320,
+                "name": "Indnath",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2321,
+                "name": "Agnita",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2322,
+                "name": "Atiel",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2323,
+                "name": "Tassin",
+                "region": "eu",
+                "race": 2
+            },
+            {
+                "serverId": 2401,
+                "name": "Israphel",
+                "region": "la",
+                "race": 2
+            },
+            {
+                "serverId": 2402,
+                "name": "Zikel",
+                "region": "la",
+                "race": 2
+            },
+            {
+                "serverId": 2403,
+                "name": "Triniel",
+                "region": "la",
+                "race": 2
+            },
+            {
+                "serverId": 2404,
+                "name": "Lumiel",
+                "region": "la",
+                "race": 2
+            },
+            {
+                "serverId": 2405,
+                "name": "Marchutan",
+                "region": "la",
+                "race": 2
+            },
+            {
+                "serverId": 2406,
+                "name": "Azphel",
+                "region": "la",
+                "race": 2
+            },
+            {
+                "serverId": 2501,
+                "name": "Israphel",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2502,
+                "name": "Zikel",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2503,
+                "name": "Triniel",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2504,
+                "name": "Lumiel",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2505,
+                "name": "Marchutan",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2506,
+                "name": "Azphel",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2507,
+                "name": "Ereshkigal",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2508,
+                "name": "Beritra",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2509,
+                "name": "Nemon",
+                "region": "as",
+                "race": 2
+            },
+            {
+                "serverId": 2510,
+                "name": "Hadala",
+                "region": "as",
+                "race": 2
+            }
+        ]
+    }
+}
