@@ -31,7 +31,7 @@ export const REGION_LABELS: Record<string, string> = {
   nae: 'NA East',
   naw: 'NA West',
   eu: 'Europe',
-  la: 'Latin America',
+  la: 'South America',
   as: 'Asia'
 }
 
@@ -39,6 +39,16 @@ export function formatRegionName(region?: string): string {
   if (!region) return 'Global'
   const key = region.toLowerCase()
   return REGION_LABELS[key] || region.toUpperCase()
+}
+
+export function getRaceFromServer(server?: Server | null, fallbackServerId?: number): DragonRace {
+  if (server) {
+    return server.race === 2 ? 'dark' : 'light'
+  }
+  if (typeof fallbackServerId === 'number') {
+    return fallbackServerId >= 2000 ? 'dark' : 'light'
+  }
+  return 'dark'
 }
 
 export function normalizeMainCategory(rawCategory?: string): DragonProfessionCategory {
@@ -269,7 +279,7 @@ const npcPrices = shallowRef<NpcPrices>({})
 const servers = shallowRef<Server[]>([])
 
 const selectedServerId = ref<number>(2304)
-const selectedRace = ref<DragonRace>('light')
+const selectedRace = ref<DragonRace>('dark')
 const selectedCategory = ref<DragonCategoryFilter>('all')
 const selectedSubTab = ref<string>('Sword')
 const selectedSlot = ref<string>('Longsword')
@@ -313,6 +323,9 @@ export const useDragonChains = () => {
               : servers.value[0].serverId
         }
 
+        const currentSrv = servers.value.find((s) => s.serverId === selectedServerId.value)
+        selectedRace.value = getRaceFromServer(currentSrv, selectedServerId.value)
+
         isLoaded.value = true
       } catch (err: any) {
         console.error('Failed to load Dragon Lord calculator data:', err)
@@ -327,11 +340,14 @@ export const useDragonChains = () => {
   }
 
   const changeServer = async (serverId: number) => {
-    selectedServerId.value = Number(serverId)
-    const srv = servers.value.find((s) => s.serverId === Number(serverId))
+    const numericId = Number(serverId)
+    selectedServerId.value = numericId
+    const srv = servers.value.find((s) => s.serverId === numericId)
+    selectedRace.value = getRaceFromServer(srv, numericId)
+
     try {
       const updatedListings = await apiService.getListings({
-        serverId: Number(serverId),
+        serverId: numericId,
         region: srv?.region
       })
       if (updatedListings) {
@@ -347,19 +363,25 @@ export const useDragonChains = () => {
   }
 
   const serversByRegion = computed(() => {
-    const groups: { region: string; label: string; servers: Server[] }[] = []
+    const REGION_ORDER = ['nae', 'naw', 'eu', 'la', 'as']
     const map = new Map<string, Server[]>()
+    for (const reg of REGION_ORDER) {
+      map.set(reg, [])
+    }
     for (const s of servers.value) {
       const reg = (s.region || 'global').toLowerCase()
       if (!map.has(reg)) map.set(reg, [])
       map.get(reg)!.push(s)
     }
+    const groups: { region: string; label: string; servers: Server[] }[] = []
     for (const [region, list] of map.entries()) {
-      groups.push({
-        region,
-        label: formatRegionName(region),
-        servers: list
-      })
+      if (list.length > 0) {
+        groups.push({
+          region,
+          label: formatRegionName(region),
+          servers: list
+        })
+      }
     }
     return groups
   })
@@ -555,6 +577,7 @@ export const useDragonChains = () => {
     getAvailableSlots,
     getChain,
     formatIconUrl,
-    formatRegionName
+    formatRegionName,
+    getRaceFromServer
   }
 }
