@@ -10,6 +10,7 @@ import {
   type DragonSlotChain,
   type Listing,
   type NpcPrices,
+  type RawMaterialCraftTarget,
   type ResolvedIngredient,
   type StageCalculationStep,
   type TransferCalculationResult
@@ -24,6 +25,7 @@ export interface IngredientResolutionContext {
   allRecipesById: Map<string, DragonRecipe> | Record<string, DragonRecipe>
   itemProducerRecipeMap?: Map<number, DragonRecipe>
   counterpartChain?: DragonSlotChain | null
+  forceCraftSubMaterials?: boolean
 }
 
 export interface CalculateTransferParams {
@@ -32,6 +34,7 @@ export interface CalculateTransferParams {
   targetStage: DragonStageNumber
   procSkips: ProcSkipsMap
   ownedMaterials?: OwnedMaterialsMap
+  forceCraftSubMaterials?: boolean
   context: IngredientResolutionContext
 }
 
@@ -199,12 +202,14 @@ export function resolveIngredientCost(
   let method: AcquisitionMethod = 'Buy'
   let isPriceMissing = false
   let unitSavings = 0
+  const isBuyCheaperThanCraft =
+    subIngredients.length > 0 && buyPrice !== null && craftPrice !== null && buyPrice < craftPrice
 
   if (buyPrice !== null && craftPrice !== null) {
-    if (craftPrice < buyPrice) {
+    if (context.forceCraftSubMaterials || craftPrice <= buyPrice) {
       unitPrice = craftPrice
       method = 'Craft'
-      unitSavings = buyPrice - craftPrice
+      unitSavings = Math.max(0, buyPrice - craftPrice)
     } else {
       unitPrice = buyPrice
       method = 'Buy'
@@ -230,8 +235,13 @@ export function resolveIngredientCost(
     icon: item.icon,
     grade: item.grade,
     quantity,
+    perCraftQuantity: quantity,
     ownedQuantity: 0,
     allocatedOwned: 0,
+    rawAllocatedOwned: 0,
+    allocatedFromParentCrafts: 0,
+    craftableFromRaw: 0,
+    rawCostSavings: 0,
     remainingQuantity: quantity,
     mainCategory: item.mainCategory || '',
     subCategory: item.subCategory || '',
@@ -246,10 +256,13 @@ export function resolveIngredientCost(
     remainingCost: totalCost,
     method,
     acquisitionMethod: method,
+    isBuyCheaperThanCraft,
     isNpcSource: method === 'Buy' && isNpcSource,
     isPriceMissing,
     craftableRecipeId,
     subIngredients,
+    usedForCrafts: [],
+    stages: [],
     unitSavings
   }
 }
@@ -287,7 +300,20 @@ export function makeRawOwnedKey(itemId: string | number): string {
 export function calculateTransferPath(
   params: CalculateTransferParams
 ): TransferCalculationResult {
-  const { chain, currentStage, targetStage, procSkips, ownedMaterials = {}, context } = params
+  const {
+    chain,
+    currentStage,
+    targetStage,
+    procSkips,
+    ownedMaterials = {},
+    forceCraftSubMaterials = false,
+    context
+  } = params
+
+  const effectiveContext: IngredientResolutionContext = {
+    ...context,
+    forceCraftSubMaterials: forceCraftSubMaterials || Boolean(context.forceCraftSubMaterials)
+  }
 
   if (!chain || targetStage <= currentStage) {
     return {
@@ -316,6 +342,16 @@ export function calculateTransferPath(
 
   const steps: StageCalculationStep[] = []
   const ALL_STAGES: DragonStageNumber[] = [1, 2, 3, 4, 5, 6]
+  const rawPool = new Map<string, number>()
+
+  const getRawAvailable = (rawId: string): number => {
+    if (!rawPool.has(rawId)) {
+      const rawKey = makeRawOwnedKey(rawId)
+      const initial = Math.max(0, Math.floor(Number(ownedMaterials[rawKey]) || 0))
+      rawPool.set(rawId, initial)
+    }
+    return rawPool.get(rawId) || 0
+  }
 
   for (const stageNum of ALL_STAGES) {
     if (stageNum <= currentStage || stageNum > targetStage) continue
@@ -336,27 +372,46 @@ export function calculateTransferPath(
       Boolean(procSkips[stageNum])
 
     const resolvedIngredients = included.map((ing) => {
-      const base = resolveIngredientCost(ing, context)
+      const base = resolveIngredientCost(ing, effectiveContext)
       const stageKey = makeStageOwnedKey(stageNum, base.id)
       const stageOwned = Math.max(0, Math.floor(Number(ownedMaterials[stageKey]) || 0))
       const allocated = skipped ? 0 : Math.min(base.quantity, stageOwned)
       const remainingQty = skipped ? base.quantity : Math.max(0, base.quantity - allocated)
       const remainingCost = remainingQty * base.unitPrice
 
+      let stepSubIngredients = base.subIngredients.map((sub) => {
+        const perCraftQty = sub.perCraftQuantity ?? sub.quantity
+        const totalSubQty = perCraftQty * base.quantity
+        const coveredByParentOwned = skipped ? 0 : perCraftQty * allocated
+        const remainingSubQty = skipped ? totalSubQty : Math.max(0, totalSubQty - coveredByParentOwned)
+
+        return {
+          ...sub,
+          perCraftQuantity: perCraftQty,
+          quantity: totalSubQty,
+          ownedQuantity: coveredByParentOwned,
+          allocatedOwned: coveredByParentOwned,
+          rawAllocatedOwned: 0,
+          allocatedFromParentCrafts: coveredByParentOwned,
+          remainingQuantity: remainingSubQty,
+          totalCost: sub.unitPrice * totalSubQty,
+          remainingCost: sub.unitPrice * remainingSubQty,
+          stages: [stageNum]
+        }
+      })
+
       return {
         ...base,
         ownedQuantity: stageOwned,
         allocatedOwned: allocated,
+        craftableFromRaw: 0,
+        rawCostSavings: 0,
         remainingQuantity: remainingQty,
-        remainingCost
+        remainingCost,
+        subIngredients: stepSubIngredients,
+        stages: [stageNum]
       }
     })
-
-    const materialCost = resolvedIngredients.reduce((sum, ing) => sum + ing.totalCost, 0)
-    const remainingMaterialCost = resolvedIngredients.reduce((sum, ing) => sum + ing.remainingCost, 0)
-    const goldCost = typeof stageRecipe.goldCost === 'number' ? stageRecipe.goldCost : 0
-    const stageTotalCost = materialCost + goldCost
-    const remainingStageTotalCost = remainingMaterialCost + goldCost
 
     steps.push({
       stage: stageNum,
@@ -376,14 +431,151 @@ export function calculateTransferPath(
       isSkipped: skipped,
       ingredients: resolvedIngredients,
       excludedEquipmentItems: excluded,
-      goldCost,
-      materialCost,
-      remainingMaterialCost,
-      stageTotalCost,
-      remainingStageTotalCost,
-      effectiveCost: skipped ? 0 : remainingStageTotalCost,
-      potentialSavings: stageTotalCost
+      goldCost: typeof stageRecipe.goldCost === 'number' ? stageRecipe.goldCost : 0,
+      materialCost: 0,
+      remainingMaterialCost: 0,
+      stageTotalCost: 0,
+      remainingStageTotalCost: 0,
+      effectiveCost: 0,
+      potentialSavings: 0
     })
+  }
+
+  // Pass 1: Allocate rawPool to active ingredients where method === 'Craft'
+  for (const step of steps) {
+    if (step.isSkipped) continue
+    for (const ing of step.ingredients) {
+      if (ing.method === 'Craft' && ing.subIngredients.length > 0) {
+        for (const sub of ing.subIngredients) {
+          const perCraftQty = sub.perCraftQuantity ?? 1
+          const neededForRemaining = perCraftQty * ing.remainingQuantity
+          const availRaw = getRawAvailable(sub.id)
+          const allocatedFromRaw = Math.min(neededForRemaining, availRaw)
+
+          if (allocatedFromRaw > 0) {
+            rawPool.set(sub.id, availRaw - allocatedFromRaw)
+          }
+
+          const totalSubAllocated = (sub.allocatedFromParentCrafts || 0) + allocatedFromRaw
+          const remainingSubQty = Math.max(0, sub.quantity - totalSubAllocated)
+
+          sub.rawAllocatedOwned = allocatedFromRaw
+          sub.allocatedOwned = totalSubAllocated
+          sub.ownedQuantity = totalSubAllocated
+          sub.remainingQuantity = remainingSubQty
+          sub.remainingCost = sub.unitPrice * remainingSubQty
+        }
+
+        ing.craftableFromRaw =
+          ing.remainingQuantity > 0
+            ? Math.min(
+                ing.remainingQuantity,
+                ...ing.subIngredients.map((s) =>
+                  Math.floor((s.rawAllocatedOwned || 0) / (s.perCraftQuantity || 1))
+                )
+              )
+            : 0
+
+        ing.rawCostSavings = Math.min(
+          ing.remainingCost,
+          ing.subIngredients.reduce(
+            (sum, s) => sum + (s.rawAllocatedOwned || 0) * s.unitPrice,
+            0
+          )
+        )
+
+        ing.remainingCost = Math.max(0, ing.remainingCost - ing.rawCostSavings)
+      }
+    }
+  }
+
+  // Pass 2: Smart Buy -> Craft switch for Buy-cheaper items when user owns raw materials that make crafting cheaper than buying
+  for (const step of steps) {
+    if (step.isSkipped) continue
+    for (const ing of step.ingredients) {
+      if (ing.method === 'Buy' && ing.subIngredients.length > 0 && ing.remainingQuantity > 0) {
+        const hasAnyRawInPool = ing.subIngredients.some((s) => getRawAvailable(s.id) > 0)
+        if (!hasAnyRawInPool) continue
+
+        const unitCraftCost = ing.craftPrice ?? ing.subIngredients.reduce(
+          (sum, s) => sum + (s.perCraftQuantity || 1) * s.unitPrice,
+          0
+        )
+
+        let unitsSwitchedToCraft = 0
+        let unitsFullyCraftable = 0
+        let totalSavingsVsBuy = 0
+        const allocatedPerSub = new Map<string, number>()
+
+        for (let u = 0; u < ing.remainingQuantity; u++) {
+          let rawValForUnit = 0
+          let allSubsCoveredForUnit = true
+          const unitTake = new Map<string, number>()
+
+          for (const sub of ing.subIngredients) {
+            const perCraft = sub.perCraftQuantity ?? 1
+            const avail = getRawAvailable(sub.id) - (allocatedPerSub.get(sub.id) || 0)
+            const take = Math.max(0, Math.min(perCraft, avail))
+            unitTake.set(sub.id, take)
+            rawValForUnit += take * sub.unitPrice
+            if (take < perCraft) {
+              allSubsCoveredForUnit = false
+            }
+          }
+
+          const effectiveUnitCraftCost = Math.max(0, unitCraftCost - rawValForUnit)
+          if (rawValForUnit > 0 && effectiveUnitCraftCost < ing.unitPrice) {
+            unitsSwitchedToCraft++
+            if (allSubsCoveredForUnit) {
+              unitsFullyCraftable++
+            }
+            totalSavingsVsBuy += ing.unitPrice - effectiveUnitCraftCost
+            for (const [subId, take] of unitTake.entries()) {
+              if (take > 0) {
+                allocatedPerSub.set(subId, (allocatedPerSub.get(subId) || 0) + take)
+              }
+            }
+          } else {
+            break
+          }
+        }
+
+        if (unitsSwitchedToCraft > 0) {
+          for (const sub of ing.subIngredients) {
+            const allocatedFromRaw = allocatedPerSub.get(sub.id) || 0
+            if (allocatedFromRaw > 0) {
+              const avail = getRawAvailable(sub.id)
+              rawPool.set(sub.id, Math.max(0, avail - allocatedFromRaw))
+            }
+            const totalSubAllocated = (sub.allocatedFromParentCrafts || 0) + allocatedFromRaw
+            const remainingSubQty = Math.max(0, sub.quantity - totalSubAllocated)
+            sub.rawAllocatedOwned = allocatedFromRaw
+            sub.allocatedOwned = totalSubAllocated
+            sub.ownedQuantity = totalSubAllocated
+            sub.remainingQuantity = remainingSubQty
+            sub.remainingCost = sub.unitPrice * remainingSubQty
+          }
+
+          ing.craftableFromRaw = unitsFullyCraftable
+          ing.rawCostSavings = Math.min(ing.remainingCost, totalSavingsVsBuy)
+          ing.remainingCost = Math.max(0, ing.remainingCost - ing.rawCostSavings)
+
+          if (unitsSwitchedToCraft === ing.remainingQuantity) {
+            ing.method = 'Craft'
+            ing.acquisitionMethod = 'Craft'
+          }
+        }
+      }
+    }
+  }
+
+  for (const step of steps) {
+    step.materialCost = step.ingredients.reduce((sum, ing) => sum + ing.totalCost, 0)
+    step.remainingMaterialCost = step.ingredients.reduce((sum, ing) => sum + ing.remainingCost, 0)
+    step.stageTotalCost = step.materialCost + step.goldCost
+    step.remainingStageTotalCost = step.remainingMaterialCost + step.goldCost
+    step.effectiveCost = step.isSkipped ? 0 : step.remainingStageTotalCost
+    step.potentialSavings = step.stageTotalCost
   }
 
   const activeSteps = steps.filter((s) => !s.isSkipped)
@@ -399,41 +591,128 @@ export function calculateTransferPath(
         existing.quantity += ing.quantity
         existing.ownedQuantity += ing.allocatedOwned
         existing.allocatedOwned += ing.allocatedOwned
+        existing.craftableFromRaw = (existing.craftableFromRaw || 0) + (ing.craftableFromRaw || 0)
+        existing.rawCostSavings = (existing.rawCostSavings || 0) + (ing.rawCostSavings || 0)
         existing.remainingQuantity += ing.remainingQuantity
-        existing.totalCost = existing.unitPrice * existing.quantity
-        existing.remainingCost = existing.unitPrice * existing.remainingQuantity
+        existing.totalCost += ing.totalCost
+        existing.remainingCost += ing.remainingCost
+        if (ing.method === 'Craft') {
+          existing.method = 'Craft'
+          existing.acquisitionMethod = 'Craft'
+        }
+        if (existing.stages && !existing.stages.includes(step.stage)) {
+          existing.stages.push(step.stage)
+        }
+
+        if (ing.subIngredients.length > 0) {
+          for (const sub of ing.subIngredients) {
+            const existingSub = existing.subIngredients.find((s) => s.id === sub.id)
+            if (existingSub) {
+              existingSub.quantity += sub.quantity
+              existingSub.ownedQuantity += sub.allocatedOwned
+              existingSub.allocatedOwned += sub.allocatedOwned
+              existingSub.rawAllocatedOwned =
+                (existingSub.rawAllocatedOwned || 0) + (sub.rawAllocatedOwned || 0)
+              existingSub.allocatedFromParentCrafts =
+                (existingSub.allocatedFromParentCrafts || 0) +
+                (sub.allocatedFromParentCrafts || 0)
+              existingSub.remainingQuantity += sub.remainingQuantity
+              existingSub.totalCost += sub.totalCost
+              existingSub.remainingCost += sub.remainingCost
+              if (existingSub.stages && !existingSub.stages.includes(step.stage)) {
+                existingSub.stages.push(step.stage)
+              }
+            } else {
+              existing.subIngredients.push({
+                ...sub,
+                stages: [...(sub.stages || [step.stage])]
+              })
+            }
+          }
+        }
       } else {
         aggregatedMap.set(ing.id, {
           ...ing,
           ownedQuantity: ing.allocatedOwned,
-          totalCost: ing.unitPrice * ing.quantity,
-          remainingCost: ing.unitPrice * ing.remainingQuantity,
-          subIngredients: ing.subIngredients.map((sub) => ({ ...sub }))
+          totalCost: ing.totalCost,
+          remainingCost: ing.remainingCost,
+          stages: [step.stage],
+          subIngredients: ing.subIngredients.map((sub) => ({
+            ...sub,
+            stages: [...(sub.stages || [step.stage])]
+          }))
         })
       }
 
       if (ing.method === 'Craft' && ing.subIngredients.length > 0) {
         for (const sub of ing.subIngredients) {
-          const baseSubQty = sub.quantity * ing.quantity
-          const remainingSubQty = sub.quantity * ing.remainingQuantity
-          const allocatedSubQty = baseSubQty - remainingSubQty
+          const perCraftQty = sub.perCraftQuantity ?? 1
           const existingRaw = expandedRawMap.get(sub.id)
+          const craftTargets: RawMaterialCraftTarget[] = existingRaw?.usedForCrafts
+            ? [...existingRaw.usedForCrafts]
+            : []
+
+          const existingTarget = craftTargets.find((t) => t.parentItemId === ing.id)
+          if (existingTarget) {
+            if (!existingTarget.stages.includes(step.stage)) {
+              existingTarget.stages.push(step.stage)
+            }
+            existingTarget.parentTotalQuantity += ing.quantity
+            existingTarget.parentOwnedQuantity += ing.allocatedOwned
+            existingTarget.parentRemainingToCraft += ing.remainingQuantity
+            existingTarget.parentCraftableFromRaw += ing.craftableFromRaw || 0
+            existingTarget.rawTotalQuantity += sub.quantity
+            existingTarget.rawRequiredQuantity +=
+              sub.quantity - (sub.allocatedFromParentCrafts || 0)
+            existingTarget.rawAllocatedOwned += sub.rawAllocatedOwned || 0
+            existingTarget.rawRemainingQuantity += sub.remainingQuantity
+          } else {
+            craftTargets.push({
+              parentItemId: ing.id,
+              parentName: ing.name,
+              parentIcon: ing.icon,
+              parentGrade: ing.grade,
+              stages: [step.stage],
+              parentTotalQuantity: ing.quantity,
+              parentOwnedQuantity: ing.allocatedOwned,
+              parentRemainingToCraft: ing.remainingQuantity,
+              parentCraftableFromRaw: ing.craftableFromRaw || 0,
+              rawPerParent: perCraftQty,
+              rawTotalQuantity: sub.quantity,
+              rawRequiredQuantity: sub.quantity - (sub.allocatedFromParentCrafts || 0),
+              rawAllocatedOwned: sub.rawAllocatedOwned || 0,
+              rawRemainingQuantity: sub.remainingQuantity
+            })
+          }
+
           if (existingRaw) {
-            existingRaw.quantity += baseSubQty
-            existingRaw.ownedQuantity += allocatedSubQty
-            existingRaw.allocatedOwned += allocatedSubQty
-            existingRaw.remainingQuantity += remainingSubQty
+            existingRaw.quantity += sub.quantity
+            existingRaw.ownedQuantity += sub.allocatedOwned
+            existingRaw.allocatedOwned += sub.allocatedOwned
+            existingRaw.rawAllocatedOwned =
+              (existingRaw.rawAllocatedOwned || 0) + (sub.rawAllocatedOwned || 0)
+            existingRaw.allocatedFromParentCrafts =
+              (existingRaw.allocatedFromParentCrafts || 0) + (sub.allocatedFromParentCrafts || 0)
+            existingRaw.remainingQuantity += sub.remainingQuantity
             existingRaw.totalCost = existingRaw.unitPrice * existingRaw.quantity
             existingRaw.remainingCost = existingRaw.unitPrice * existingRaw.remainingQuantity
+            existingRaw.usedForCrafts = craftTargets
+            if (existingRaw.stages && !existingRaw.stages.includes(step.stage)) {
+              existingRaw.stages.push(step.stage)
+            }
           } else {
             expandedRawMap.set(sub.id, {
               ...sub,
-              quantity: baseSubQty,
-              ownedQuantity: allocatedSubQty,
-              allocatedOwned: allocatedSubQty,
-              remainingQuantity: remainingSubQty,
-              totalCost: sub.unitPrice * baseSubQty,
-              remainingCost: sub.unitPrice * remainingSubQty
+              quantity: sub.quantity,
+              ownedQuantity: sub.allocatedOwned,
+              allocatedOwned: sub.allocatedOwned,
+              rawAllocatedOwned: sub.rawAllocatedOwned || 0,
+              allocatedFromParentCrafts: sub.allocatedFromParentCrafts || 0,
+              remainingQuantity: sub.remainingQuantity,
+              totalCost: sub.unitPrice * sub.quantity,
+              remainingCost: sub.unitPrice * sub.remainingQuantity,
+              usedForCrafts: craftTargets,
+              stages: [step.stage]
             })
           }
         }
@@ -443,31 +722,47 @@ export function calculateTransferPath(
           existingRaw.quantity += ing.quantity
           existingRaw.ownedQuantity += ing.allocatedOwned
           existingRaw.allocatedOwned += ing.allocatedOwned
+          existingRaw.craftableFromRaw =
+            (existingRaw.craftableFromRaw || 0) + (ing.craftableFromRaw || 0)
+          existingRaw.rawCostSavings =
+            (existingRaw.rawCostSavings || 0) + (ing.rawCostSavings || 0)
           existingRaw.remainingQuantity += ing.remainingQuantity
-          existingRaw.totalCost = existingRaw.unitPrice * existingRaw.quantity
-          existingRaw.remainingCost = existingRaw.unitPrice * existingRaw.remainingQuantity
+          existingRaw.totalCost += ing.totalCost
+          existingRaw.remainingCost += ing.remainingCost
+          if (existingRaw.stages && !existingRaw.stages.includes(step.stage)) {
+            existingRaw.stages.push(step.stage)
+          }
+          if (ing.subIngredients.length > 0) {
+            for (const sub of ing.subIngredients) {
+              const existingSub = existingRaw.subIngredients.find((s) => s.id === sub.id)
+              if (existingSub) {
+                existingSub.quantity += sub.quantity
+                existingSub.ownedQuantity += sub.allocatedOwned
+                existingSub.allocatedOwned += sub.allocatedOwned
+                existingSub.rawAllocatedOwned =
+                  (existingSub.rawAllocatedOwned || 0) + (sub.rawAllocatedOwned || 0)
+                existingSub.allocatedFromParentCrafts =
+                  (existingSub.allocatedFromParentCrafts || 0) +
+                  (sub.allocatedFromParentCrafts || 0)
+                existingSub.remainingQuantity += sub.remainingQuantity
+                existingSub.totalCost += sub.totalCost
+                existingSub.remainingCost += sub.remainingCost
+              } else {
+                existingRaw.subIngredients.push({ ...sub })
+              }
+            }
+          }
         } else {
           expandedRawMap.set(ing.id, {
             ...ing,
             ownedQuantity: ing.allocatedOwned,
-            totalCost: ing.unitPrice * ing.quantity,
-            remainingCost: ing.unitPrice * ing.remainingQuantity,
+            totalCost: ing.totalCost,
+            remainingCost: ing.remainingCost,
+            stages: [step.stage],
             subIngredients: ing.subIngredients.map((sub) => ({ ...sub }))
           })
         }
       }
-    }
-  }
-
-  for (const rawItem of expandedRawMap.values()) {
-    const rawKey = makeRawOwnedKey(rawItem.id)
-    const directRawOwned = Math.max(0, Math.floor(Number(ownedMaterials[rawKey]) || 0))
-    if (directRawOwned > 0 && !aggregatedMap.has(rawItem.id)) {
-      const extraAllocated = Math.min(rawItem.remainingQuantity, directRawOwned)
-      rawItem.allocatedOwned += extraAllocated
-      rawItem.ownedQuantity = rawItem.allocatedOwned
-      rawItem.remainingQuantity = Math.max(0, rawItem.remainingQuantity - extraAllocated)
-      rawItem.remainingCost = rawItem.remainingQuantity * rawItem.unitPrice
     }
   }
 
@@ -551,6 +846,7 @@ const procSkips = ref<ProcSkipsMap>({
   6: false
 })
 const ownedMaterials = ref<OwnedMaterialsMap>({})
+const forceCraftSubMaterials = ref<boolean>(false)
 
 export const useTransferCalculator = () => {
   const dragonChains = useDragonChains()
@@ -605,6 +901,10 @@ export const useTransferCalculator = () => {
     }
   }
 
+  const toggleForceCraftSubMaterials = () => {
+    forceCraftSubMaterials.value = !forceCraftSubMaterials.value
+  }
+
   const getStageOwnedMaterial = (stage: number, itemId: string | number): number => {
     const key = makeStageOwnedKey(stage, itemId)
     return Math.max(0, Math.floor(Number(ownedMaterials.value[key]) || 0))
@@ -637,7 +937,7 @@ export const useTransferCalculator = () => {
   ) => {
     const idStr = String(itemId)
     let remainingToDistribute = Math.max(0, Math.floor(Number(totalCount) || 0))
-    if (typeof maxQuantity === 'number' && maxQuantity > 0) {
+    if (typeof maxQuantity === 'number' && maxQuantity >= 0) {
       remainingToDistribute = Math.min(maxQuantity, remainingToDistribute)
     }
 
@@ -695,12 +995,14 @@ export const useTransferCalculator = () => {
       targetStage: targetStage.value,
       procSkips: procSkips.value,
       ownedMaterials: ownedMaterials.value,
+      forceCraftSubMaterials: forceCraftSubMaterials.value,
       context: {
         npcPrices: dragonChains.npcPrices.value,
         listingsMap: dragonChains.listingsMap.value,
         allRecipesById: dragonChains.allRecipesById.value,
         itemProducerRecipeMap: dragonChains.itemProducerRecipeMap.value,
-        counterpartChain
+        counterpartChain,
+        forceCraftSubMaterials: forceCraftSubMaterials.value
       }
     })
   })
@@ -733,6 +1035,7 @@ export const useTransferCalculator = () => {
     targetStage,
     procSkips,
     ownedMaterials,
+    forceCraftSubMaterials,
     hasOwnedMaterials,
     skippableStages,
     setCurrentStage,
@@ -740,6 +1043,7 @@ export const useTransferCalculator = () => {
     toggleProcSkip,
     setProcSkip,
     resetProcSkips,
+    toggleForceCraftSubMaterials,
     getStageOwnedMaterial,
     setStageOwnedMaterial,
     setTotalOwnedMaterial,

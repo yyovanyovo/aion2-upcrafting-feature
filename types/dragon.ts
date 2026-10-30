@@ -188,6 +188,23 @@ export interface Listing {
 
 export type NpcPrices = Record<string, number>
 
+export interface RawMaterialCraftTarget {
+  parentItemId: string
+  parentName: string
+  parentIcon: string
+  parentGrade: number
+  stages: DragonStageNumber[]
+  parentTotalQuantity: number
+  parentOwnedQuantity: number
+  parentRemainingToCraft: number
+  parentCraftableFromRaw: number
+  rawPerParent: number
+  rawTotalQuantity: number
+  rawRequiredQuantity: number
+  rawAllocatedOwned: number
+  rawRemainingQuantity: number
+}
+
 export interface ResolvedIngredient {
   id: string
   itemId: number
@@ -195,8 +212,13 @@ export interface ResolvedIngredient {
   icon: string
   grade: number
   quantity: number
+  perCraftQuantity?: number
   ownedQuantity: number
   allocatedOwned: number
+  rawAllocatedOwned?: number
+  allocatedFromParentCrafts?: number
+  craftableFromRaw?: number
+  rawCostSavings?: number
   remainingQuantity: number
   mainCategory: string
   subCategory: string
@@ -211,10 +233,13 @@ export interface ResolvedIngredient {
   remainingCost: number
   method: AcquisitionMethod
   acquisitionMethod: AcquisitionMethod
+  isBuyCheaperThanCraft?: boolean
   isNpcSource: boolean
   isPriceMissing: boolean
   craftableRecipeId: string | null
   subIngredients: ResolvedIngredient[]
+  usedForCrafts?: RawMaterialCraftTarget[]
+  stages?: DragonStageNumber[]
   unitSavings: number
 }
 

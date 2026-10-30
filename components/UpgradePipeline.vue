@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { formatIconUrl } from '~/composables/useDragonChains'
 import { useTransferCalculator } from '~/composables/useTransferCalculator'
-import type { StageCalculationStep } from '~/types/dragon'
+import type { ResolvedIngredient, StageCalculationStep } from '~/types/dragon'
 
 const {
   steps,
@@ -14,6 +14,7 @@ const {
 } = useTransferCalculator()
 
 const brokenIcons = ref<Record<string, boolean>>({})
+const expandedStageCrafts = ref<Record<string, boolean>>({})
 
 const formatNumber = (val: number | null | undefined): string => {
   if (val === null || val === undefined || Number.isNaN(val)) return '—'
@@ -37,6 +38,27 @@ const isOddStageProcActive = (step: StageCalculationStep): boolean => {
   const nextEven = getNextEvenStage(step.stage)
   if (!nextEven) return false
   return Boolean(skippableStages.value[nextEven] && procSkips.value[nextEven])
+}
+
+const isIngredientExpandable = (ing: ResolvedIngredient): boolean => {
+  return ing.subIngredients.length > 0
+}
+
+const getStageCraftKey = (stage: number, itemId: string): string => {
+  return `${stage}:${itemId}`
+}
+
+const isStageCraftExpanded = (stage: number, itemId: string): boolean => {
+  return Boolean(expandedStageCrafts.value[getStageCraftKey(stage, itemId)])
+}
+
+const toggleStageCraftExpand = (stage: number, ing: ResolvedIngredient) => {
+  if (!isIngredientExpandable(ing)) return
+  const key = getStageCraftKey(stage, ing.id)
+  expandedStageCrafts.value = {
+    ...expandedStageCrafts.value,
+    [key]: !expandedStageCrafts.value[key]
+  }
 }
 
 const onOwnedInput = (stage: number, itemId: string, maxQuantity: number, event: Event) => {
@@ -200,145 +222,324 @@ const getGradeTitleClass = (grade: number): string => {
             </tr>
           </thead>
           <tbody class="divide-y divide-[#181b22] text-[13px]">
-            <tr
-              v-for="ing in step.ingredients"
-              :key="`${step.stage}-${ing.id}`"
-              class="hover:bg-[#14171e] transition-colors"
-              :class="{ 'bg-[#0f1915]/40': !step.isSkipped && ing.remainingQuantity === 0 }"
-            >
-              <td class="py-2.5 px-4">
-                <div class="flex items-center gap-3">
-                  <div
-                    class="ql-icon-frame w-8 h-8"
-                    :class="getGradeFrameClass(ing.grade)"
-                  >
-                    <img
-                      v-if="formatIconUrl(ing.icon) && !brokenIcons[`ing-${ing.id}`]"
-                      :src="formatIconUrl(ing.icon)"
-                      :alt="ing.name"
-                      class="w-full h-full object-cover"
-                      loading="lazy"
-                      @error="brokenIcons[`ing-${ing.id}`] = true"
-                    />
-                    <span v-else class="text-[9px] font-bold text-[#8b92a0]">
-                      {{ ing.name.slice(0, 2).toUpperCase() }}
-                    </span>
-                  </div>
-
-                  <div class="min-w-0">
+            <template v-for="ing in step.ingredients" :key="`${step.stage}-${ing.id}`">
+              <tr
+                class="hover:bg-[#14171e] transition-colors"
+                :class="[
+                  !step.isSkipped &&
+                  (ing.remainingQuantity === 0 ||
+                    (ing.subIngredients.length > 0 &&
+                      ing.remainingCost === 0 &&
+                      (ing.craftableFromRaw || 0) === ing.remainingQuantity))
+                    ? 'bg-[#0f1915]/40'
+                    : '',
+                  isIngredientExpandable(ing) ? 'cursor-pointer select-none' : ''
+                ]"
+                @click="toggleStageCraftExpand(step.stage, ing)"
+              >
+                <td class="py-2.5 px-4">
+                  <div class="flex items-center gap-3">
                     <div
-                      class="text-[13px] font-medium leading-tight"
-                      :class="[
-                        getGradeTitleClass(ing.grade),
-                        !step.isSkipped && ing.remainingQuantity === 0 ? 'line-through opacity-75' : ''
-                      ]"
+                      class="ql-icon-frame w-8 h-8"
+                      :class="getGradeFrameClass(ing.grade)"
                     >
-                      {{ ing.name }}
+                      <img
+                        v-if="formatIconUrl(ing.icon) && !brokenIcons[`ing-${ing.id}`]"
+                        :src="formatIconUrl(ing.icon)"
+                        :alt="ing.name"
+                        class="w-full h-full object-cover"
+                        loading="lazy"
+                        @error="brokenIcons[`ing-${ing.id}`] = true"
+                      />
+                      <span v-else class="text-[9px] font-bold text-[#8b92a0]">
+                        {{ ing.name.slice(0, 2).toUpperCase() }}
+                      </span>
                     </div>
-                    <div class="text-[11px] leading-tight mt-0.5 ql-num">
-                      <span
-                        v-if="!step.isSkipped && ing.remainingQuantity === 0"
-                        class="text-[#22c55e] font-medium"
-                      >
-                        0 more needed ({{ ing.allocatedOwned }}/{{ ing.quantity }})
-                      </span>
-                      <span
-                        v-else-if="!step.isSkipped && ing.allocatedOwned > 0"
-                        class="text-[#eab308]"
-                      >
-                        {{ ing.remainingQuantity }} more needed ({{ ing.allocatedOwned }}/{{ ing.quantity }})
-                      </span>
-                      <span v-else class="text-[#7a818e]">
-                        {{ ing.remainingQuantity }} more needed
-                      </span>
+
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span
+                          class="text-[13px] font-medium leading-tight"
+                          :class="[
+                            getGradeTitleClass(ing.grade),
+                            !step.isSkipped &&
+                            (ing.remainingQuantity === 0 ||
+                              (ing.subIngredients.length > 0 &&
+                                ing.remainingCost === 0 &&
+                                (ing.craftableFromRaw || 0) === ing.remainingQuantity))
+                              ? 'line-through opacity-75'
+                              : ''
+                          ]"
+                        >
+                          {{ ing.name }}
+                        </span>
+
+                        <span
+                          v-if="ing.isBuyCheaperThanCraft && ing.method === 'Buy'"
+                          class="px-1.5 py-0.5 rounded bg-[#11221c] border border-[#22c55e]/30 text-[10px] font-medium text-[#4ade80] ql-num"
+                        >
+                          Buy &lt; Craft ({{ formatNumber(ing.craftPrice) }})
+                        </span>
+                      </div>
+                      <div class="text-[11px] leading-tight mt-0.5 ql-num">
+                        <span
+                          v-if="!step.isSkipped && ing.remainingQuantity === 0"
+                          class="text-[#22c55e] font-medium"
+                        >
+                          0 more needed ({{ ing.allocatedOwned }}/{{ ing.quantity }})
+                        </span>
+                        <span
+                          v-else-if="
+                            !step.isSkipped &&
+                            ing.subIngredients.length > 0 &&
+                            (ing.craftableFromRaw || 0) === ing.remainingQuantity &&
+                            ing.remainingCost === 0
+                          "
+                          class="text-[#22c55e] font-medium"
+                        >
+                          Ready to craft {{ ing.craftableFromRaw }} from owned raw mats
+                        </span>
+                        <span
+                          v-else-if="
+                            !step.isSkipped &&
+                            ing.subIngredients.length > 0 &&
+                            ((ing.craftableFromRaw || 0) > 0 || (ing.rawCostSavings || 0) > 0)
+                          "
+                          class="text-[#38bdf8]"
+                        >
+                          <template v-if="(ing.craftableFromRaw || 0) > 0">
+                            {{ ing.craftableFromRaw }}/{{ ing.remainingQuantity }} craftable from raw mats ·
+                          </template>
+                          {{ ing.remainingQuantity - (ing.craftableFromRaw || 0) }} more to cover
+                        </span>
+                        <span
+                          v-else-if="!step.isSkipped && ing.allocatedOwned > 0"
+                          class="text-[#eab308]"
+                        >
+                          {{ ing.remainingQuantity }} more needed ({{ ing.allocatedOwned }}/{{ ing.quantity }})
+                        </span>
+                        <span v-else class="text-[#7a818e]">
+                          {{ ing.remainingQuantity }} more needed
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </td>
+                </td>
 
-              <td class="py-2.5 px-2.5 text-right whitespace-nowrap">
-                <input
-                  type="number"
-                  min="0"
-                  :max="ing.quantity"
-                  step="1"
-                  placeholder="0"
-                  :value="getStageOwnedMaterial(step.stage, ing.id) || ''"
-                  :aria-label="`Stage ${step.stage} Owned ${ing.name}`"
-                  class="w-full bg-[#181b22] hover:bg-[#1d212a] focus:bg-[#1d212a] border rounded px-2 py-1 text-right text-[12px] ql-num focus:outline-none transition-colors"
-                  :class="
-                    getStageOwnedMaterial(step.stage, ing.id) > 0
-                      ? 'border-[#22c55e]/50 text-[#22c55e] font-semibold'
-                      : 'border-[#252934] focus:border-[#3b82f6] text-white placeholder-[#4b515d]'
-                  "
-                  @input="onOwnedInput(step.stage, ing.id, ing.quantity, $event)"
-                />
-              </td>
+                <td class="py-2.5 px-2.5 text-right whitespace-nowrap" @click.stop>
+                  <input
+                    type="number"
+                    min="0"
+                    :max="ing.quantity"
+                    step="1"
+                    placeholder="0"
+                    :value="getStageOwnedMaterial(step.stage, ing.id) || ''"
+                    :aria-label="`Stage ${step.stage} Owned ${ing.name}`"
+                    class="w-full bg-[#181b22] hover:bg-[#1d212a] focus:bg-[#1d212a] border rounded px-2 py-1 text-right text-[12px] ql-num focus:outline-none transition-colors"
+                    :class="
+                      getStageOwnedMaterial(step.stage, ing.id) > 0
+                        ? 'border-[#22c55e]/50 text-[#22c55e] font-semibold'
+                        : 'border-[#252934] focus:border-[#3b82f6] text-white placeholder-[#4b515d]'
+                    "
+                    @input="onOwnedInput(step.stage, ing.id, ing.quantity, $event)"
+                  />
+                </td>
 
-              <td class="py-2.5 px-3 text-right ql-num whitespace-nowrap">
-                <div
-                  class="text-[13px] font-semibold leading-tight"
-                  :class="!step.isSkipped && ing.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-white'"
-                >
-                  {{ ing.remainingQuantity }}
-                </div>
-                <div class="text-[11px] text-[#646b78] leading-tight">
-                  <template v-if="!step.isSkipped && ing.allocatedOwned > 0">
-                    {{ ing.allocatedOwned }}/{{ ing.quantity }}
-                  </template>
-                  <template v-else>
-                    ×{{ ing.quantity }}
-                  </template>
-                </div>
-              </td>
+                <td class="py-2.5 px-3 text-right ql-num whitespace-nowrap">
+                  <div
+                    class="text-[13px] font-semibold leading-tight"
+                    :class="
+                      !step.isSkipped &&
+                      (ing.remainingQuantity === 0 ||
+                        (ing.subIngredients.length > 0 &&
+                          (ing.craftableFromRaw || 0) === ing.remainingQuantity &&
+                          ing.remainingCost === 0))
+                        ? 'text-[#22c55e]'
+                        : 'text-white'
+                    "
+                  >
+                    {{
+                      !step.isSkipped && ing.subIngredients.length > 0
+                        ? Math.max(0, ing.remainingQuantity - (ing.craftableFromRaw || 0))
+                        : ing.remainingQuantity
+                    }}
+                  </div>
+                  <div class="text-[11px] text-[#646b78] leading-tight">
+                    <template
+                      v-if="
+                        !step.isSkipped &&
+                        (ing.allocatedOwned > 0 || (ing.craftableFromRaw || 0) > 0)
+                      "
+                    >
+                      {{ ing.allocatedOwned + (ing.craftableFromRaw || 0) }}/{{ ing.quantity }}
+                    </template>
+                    <template v-else>
+                      ×{{ ing.quantity }}
+                    </template>
+                  </div>
+                </td>
 
-              <td class="py-2.5 px-3 whitespace-nowrap">
-                <div class="bg-[#1b1f27] border border-[#252934] rounded px-2.5 py-1 text-[12px] text-[#94a3b8] ql-num">
-                  {{ ing.isPriceMissing ? '—' : Math.round(ing.unitPrice) }}
-                </div>
-                <div class="mt-1 text-[11px] leading-none flex items-center gap-1">
-                  <template v-if="ing.method === 'Craft'">
+                <td class="py-2.5 px-3 whitespace-nowrap">
+                  <div class="bg-[#1b1f27] border border-[#252934] rounded px-2.5 py-1 text-[12px] text-[#94a3b8] ql-num">
+                    {{ ing.isPriceMissing ? '—' : Math.round(ing.unitPrice) }}
+                  </div>
+                  <div class="mt-1 text-[11px] leading-none flex items-center gap-1">
+                    <template v-if="ing.method === 'Craft'">
+                      <svg
+                        class="w-3 h-3 text-[#38bdf8]"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+                      </svg>
+                      <span class="text-[#38bdf8] font-medium">Craft</span>
+                    </template>
+                    <template v-else-if="ing.isNpcSource">
+                      <span class="text-[#7a818e]">NPC</span>
+                    </template>
+                    <template v-else>
+                      <span class="text-[#7a818e] ql-num">
+                        {{ ing.listingsCount ? `${ing.listingsCount} listed` : 'Market' }}
+                      </span>
+                    </template>
                     <svg
-                      class="w-3 h-3 text-[#38bdf8]"
+                      v-if="isIngredientExpandable(ing)"
+                      class="w-3 h-3 text-[#38bdf8] transition-transform duration-150 ml-0.5"
+                      :class="{ 'rotate-180': isStageCraftExpanded(step.stage, ing.id) }"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
                       stroke-width="2"
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                      />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
-                    <span class="text-[#38bdf8] font-medium">Craft</span>
-                  </template>
-                  <template v-else-if="ing.isNpcSource">
-                    <span class="text-[#7a818e]">NPC</span>
-                  </template>
-                  <template v-else>
-                    <span class="text-[#7a818e] ql-num">
-                      {{ ing.listingsCount ? `${ing.listingsCount} listed` : 'Market' }}
-                    </span>
-                  </template>
-                </div>
-              </td>
+                  </div>
+                </td>
 
-              <td class="py-2.5 px-4 text-right ql-num whitespace-nowrap">
-                <div
-                  class="font-bold leading-tight"
-                  :class="!step.isSkipped && ing.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-white'"
+                <td class="py-2.5 px-4 text-right ql-num whitespace-nowrap">
+                  <div
+                    class="font-bold leading-tight"
+                    :class="
+                      !step.isSkipped && (ing.remainingQuantity === 0 || ing.remainingCost === 0)
+                        ? 'text-[#22c55e]'
+                        : 'text-white'
+                    "
+                  >
+                    {{ ing.isPriceMissing ? '—' : formatNumber(ing.remainingCost) }}
+                  </div>
+                  <div
+                    v-if="!step.isSkipped && !ing.isPriceMissing && ing.remainingCost < ing.totalCost"
+                    class="text-[11px] text-[#646b78] line-through leading-tight"
+                  >
+                    {{ formatNumber(ing.totalCost) }}
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Expandable sub-ingredients for craftable stage material -->
+              <template v-if="isStageCraftExpanded(step.stage, ing.id) && ing.subIngredients.length">
+                <tr
+                  v-for="sub in ing.subIngredients"
+                  :key="`${step.stage}-${ing.id}-sub-${sub.id}`"
+                  class="bg-[#0c0e13] border-l-2 border-l-[#38bdf8]/50 text-[12px]"
                 >
-                  {{ ing.isPriceMissing ? '—' : formatNumber(ing.remainingCost) }}
-                </div>
-                <div
-                  v-if="!step.isSkipped && ing.allocatedOwned > 0 && !ing.isPriceMissing"
-                  class="text-[11px] text-[#646b78] line-through leading-tight"
-                >
-                  {{ formatNumber(ing.totalCost) }}
-                </div>
-              </td>
-            </tr>
+                  <td class="py-2 pl-9 pr-4">
+                    <div class="flex items-center gap-2.5">
+                      <span class="text-[#475569] text-[11px] select-none">↳</span>
+                      <div
+                        class="ql-icon-frame w-6 h-6"
+                        :class="getGradeFrameClass(sub.grade)"
+                      >
+                        <img
+                          v-if="formatIconUrl(sub.icon) && !brokenIcons[`sub-${sub.id}`]"
+                          :src="formatIconUrl(sub.icon)"
+                          :alt="sub.name"
+                          class="w-full h-full object-cover"
+                          loading="lazy"
+                          @error="brokenIcons[`sub-${sub.id}`] = true"
+                        />
+                        <span v-else class="text-[8px] font-bold text-[#8b92a0]">
+                          {{ sub.name.slice(0, 2).toUpperCase() }}
+                        </span>
+                      </div>
+
+                      <div class="min-w-0">
+                        <div
+                          class="font-medium leading-tight"
+                          :class="[
+                            getGradeTitleClass(sub.grade),
+                            !step.isSkipped && sub.remainingQuantity === 0 ? 'line-through opacity-75' : ''
+                          ]"
+                        >
+                          {{ sub.name }}
+                        </div>
+                        <div class="text-[11px] text-[#646b78] leading-tight mt-0.5 ql-num">
+                          {{ sub.perCraftQuantity || 1 }}× per craft ·
+                          <span v-if="!step.isSkipped && sub.remainingQuantity === 0" class="text-[#22c55e]">
+                            0 more needed ({{ sub.allocatedOwned }}/{{ sub.quantity }})
+                          </span>
+                          <span v-else class="text-[#8b92a0]">
+                            {{ sub.remainingQuantity }} more needed ({{ sub.allocatedOwned }}/{{ sub.quantity }})
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td class="py-2 px-2.5 text-right whitespace-nowrap ql-num">
+                    <span
+                      v-if="!step.isSkipped && sub.allocatedOwned > 0"
+                      class="text-[11px] text-[#22c55e] font-medium"
+                    >
+                      {{ sub.allocatedOwned }} covered
+                    </span>
+                    <span v-else class="text-[11px] text-[#646b78]">
+                      0 covered
+                    </span>
+                  </td>
+
+                  <td class="py-2 px-3 text-right ql-num whitespace-nowrap">
+                    <div
+                      class="font-semibold leading-tight"
+                      :class="!step.isSkipped && sub.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-[#cbd5e1]'"
+                    >
+                      {{ sub.remainingQuantity }}
+                    </div>
+                    <div class="text-[10px] text-[#646b78] leading-tight">
+                      {{ sub.allocatedOwned }}/{{ sub.quantity }}
+                    </div>
+                  </td>
+
+                  <td class="py-2 px-3 ql-num whitespace-nowrap">
+                    <span class="text-[#94a3b8]">{{ formatNumber(sub.unitPrice) }}</span>
+                    <span class="text-[10px] text-[#646b78] ml-1.5">
+                      {{ sub.isNpcSource ? 'NPC' : sub.listingsCount ? `${sub.listingsCount} listed` : 'Market' }}
+                    </span>
+                  </td>
+
+                  <td class="py-2 px-4 text-right ql-num whitespace-nowrap">
+                    <div
+                      class="font-semibold leading-tight"
+                      :class="!step.isSkipped && sub.remainingQuantity === 0 ? 'text-[#22c55e]' : 'text-[#cbd5e1]'"
+                    >
+                      {{ formatNumber(sub.remainingCost) }}
+                    </div>
+                    <div
+                      v-if="!step.isSkipped && sub.remainingCost < sub.totalCost"
+                      class="text-[10px] text-[#646b78] line-through leading-tight"
+                    >
+                      {{ formatNumber(sub.totalCost) }}
+                    </div>
+                  </td>
+                </tr>
+              </template>
+            </template>
           </tbody>
         </table>
       </div>
