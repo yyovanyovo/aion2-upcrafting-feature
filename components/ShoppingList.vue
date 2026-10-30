@@ -33,19 +33,33 @@ const displayedMaterials = computed<ResolvedIngredient[]>(() => {
   })
 })
 
-const hasSubCraftItems = computed(() =>
-  aggregatedMaterials.value.some((m) => m.subIngredients.length > 0)
+const allSubCraftItems = computed<ResolvedIngredient[]>(() =>
+  aggregatedMaterials.value.filter((m) => m.subIngredients.length > 0)
 )
 
+const hasSubCraftItems = computed(() => allSubCraftItems.value.length > 0)
+
 const buyCheaperSubCraftItems = computed<ResolvedIngredient[]>(() =>
-  aggregatedMaterials.value.filter(
+  allSubCraftItems.value.filter(
     (m) => m.isBuyCheaperThanCraft && m.buyPrice !== null && m.craftPrice !== null
   )
+)
+
+const craftCheaperSubCraftItems = computed<ResolvedIngredient[]>(() =>
+  allSubCraftItems.value.filter((m) => !m.isBuyCheaperThanCraft)
 )
 
 const totalSmartBuySavings = computed<number>(() =>
   buyCheaperSubCraftItems.value.reduce((sum, item) => {
     const diff = (item.craftPrice || 0) - (item.buyPrice || 0)
+    return sum + Math.max(0, diff * item.remainingQuantity)
+  }, 0)
+)
+
+const totalSmartCraftSavings = computed<number>(() =>
+  craftCheaperSubCraftItems.value.reduce((sum, item) => {
+    if (item.buyPrice === null || item.craftPrice === null) return sum
+    const diff = item.buyPrice - item.craftPrice
     return sum + Math.max(0, diff * item.remainingQuantity)
   }, 0)
 )
@@ -210,13 +224,28 @@ const getCraftTargetsSummaryLabel = (item: ResolvedIngredient): string => {
       </div>
     </div>
 
-    <!-- Smart Buy vs. Craft banner in Raw Materials when any Balaur Horn/Scale/Leather is cheaper on Market than crafting -->
+    <!-- Always-visible Smart Buy vs. Craft status bar in Raw Materials -->
     <div
-      v-if="expandSubCrafts && buyCheaperSubCraftItems.length > 0"
+      v-if="expandSubCrafts && hasSubCraftItems"
       class="px-4 py-2 border-b border-[#1a1d24] bg-[#0d1117] flex items-center justify-between gap-3 text-[12px]"
     >
       <div class="flex items-center gap-2 min-w-0 flex-1 text-[#94a3b8]">
         <svg
+          v-if="buyCheaperSubCraftItems.length === 0 && !forceCraftSubMaterials"
+          class="w-3.5 h-3.5 text-[#22c55e] shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        <svg
+          v-else
           class="w-3.5 h-3.5 text-[#38bdf8] shrink-0"
           fill="none"
           viewBox="0 0 24 24"
@@ -229,18 +258,51 @@ const getCraftTargetsSummaryLabel = (item: ResolvedIngredient): string => {
             d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        <div v-if="!forceCraftSubMaterials" class="ql-num leading-snug">
+
+        <!-- State 1: All sub-craft items are cheaper to Craft -->
+        <div
+          v-if="buyCheaperSubCraftItems.length === 0"
+          class="ql-num leading-snug"
+        >
+          <span class="text-white font-semibold mr-1.5">Smart Buy vs. Craft:</span>
+          <span>Crafting all </span>
+          <template v-for="(cItem, idx) in craftCheaperSubCraftItems" :key="cItem.id">
+            <span v-if="idx > 0" class="text-[#646b78]">{{ idx === craftCheaperSubCraftItems.length - 1 ? ' & ' : ', ' }}</span>
+            <span :class="getGradeTitleClass(cItem.grade)" class="font-medium">{{ cItem.name }}</span>
+          </template>
+          <span> is cheaper than buying on the market</span>
+          <span v-if="totalSmartCraftSavings > 0" class="text-[#22c55e] font-medium ml-1">
+            (saves {{ formatNumber(totalSmartCraftSavings) }})
+          </span>
+        </div>
+
+        <!-- State 2: Some or all sub-craft items are cheaper to Buy, and Smart Buy/Craft is active -->
+        <div
+          v-else-if="!forceCraftSubMaterials"
+          class="ql-num leading-snug"
+        >
           <span class="text-white font-semibold mr-1.5">Smart Buy vs. Craft:</span>
           <span>Buying </span>
           <template v-for="(bItem, idx) in buyCheaperSubCraftItems" :key="bItem.id">
             <span v-if="idx > 0" class="text-[#646b78]">{{ idx === buyCheaperSubCraftItems.length - 1 ? ' & ' : ', ' }}</span>
             <span :class="getGradeTitleClass(bItem.grade)" class="font-medium">{{ bItem.name }}</span>
           </template>
-          <span> on the market instead of crafting</span>
+          <template v-if="craftCheaperSubCraftItems.length > 0">
+            <span> on the market, crafting </span>
+            <template v-for="(cItem, idx) in craftCheaperSubCraftItems" :key="cItem.id">
+              <span v-if="idx > 0" class="text-[#646b78]">{{ idx === craftCheaperSubCraftItems.length - 1 ? ' & ' : ', ' }}</span>
+              <span :class="getGradeTitleClass(cItem.grade)" class="font-medium">{{ cItem.name }}</span>
+            </template>
+          </template>
+          <template v-else>
+            <span> on the market instead of crafting</span>
+          </template>
           <span v-if="totalSmartBuySavings > 0" class="text-[#22c55e] font-medium ml-1">
-            (saves {{ formatNumber(totalSmartBuySavings) }})
+            (saves {{ formatNumber(totalSmartBuySavings) }} vs. crafting all)
           </span>
         </div>
+
+        <!-- State 3: Force Craft All mode is toggled on -->
         <div v-else class="ql-num leading-snug">
           <span class="text-[#38bdf8] font-semibold mr-1.5">Craft All Mode:</span>
           <span>Expanding all Balaur materials into raw ingredients</span>
@@ -251,6 +313,7 @@ const getCraftTargetsSummaryLabel = (item: ResolvedIngredient): string => {
       </div>
 
       <button
+        v-if="buyCheaperSubCraftItems.length > 0"
         type="button"
         class="px-2.5 py-1 rounded-md border text-[11px] font-medium transition-colors shrink-0"
         :class="
@@ -348,7 +411,7 @@ const getCraftTargetsSummaryLabel = (item: ResolvedIngredient): string => {
                           <span>{{ getCraftTargetsSummaryLabel(item) }}</span>
                         </template>
                         <template v-else-if="item.isBuyCheaperThanCraft && item.method === 'Buy'">
-                          <span>Buy &lt; Craft ({{ formatNumber(item.craftPrice) }}) · Recipe</span>
+                          <span>Cheaper to buy (Craft: {{ formatNumber(item.craftPrice) }}) · Recipe</span>
                         </template>
                         <template v-else>
                           <span>Recipe ({{ item.subIngredients.length }})</span>
@@ -478,6 +541,12 @@ const getCraftTargetsSummaryLabel = (item: ResolvedIngredient): string => {
                 <div class="text-[11px] text-[#7a818e] leading-tight mt-0.5">
                   <template v-if="item.method === 'Craft'">
                     <span class="text-[#38bdf8]">Craft</span>
+                    <span
+                      v-if="item.buyPrice && item.buyPrice > item.unitPrice"
+                      class="block text-[10px] text-[#22c55e]"
+                    >
+                      Saves {{ formatNumber(item.buyPrice - item.unitPrice) }}/ea
+                    </span>
                   </template>
                   <template v-else-if="item.isNpcSource">
                     NPC

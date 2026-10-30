@@ -278,7 +278,7 @@ const getGradeTitleClass = (grade: number): string => {
                           v-if="ing.isBuyCheaperThanCraft && ing.method === 'Buy'"
                           class="px-1.5 py-0.5 rounded bg-[#11221c] border border-[#22c55e]/30 text-[10px] font-medium text-[#4ade80] ql-num"
                         >
-                          Buy &lt; Craft ({{ formatNumber(ing.craftPrice) }})
+                          Cheaper to buy (Craft: {{ formatNumber(ing.craftPrice) }})
                         </span>
                       </div>
                       <div class="text-[11px] leading-tight mt-0.5 ql-num">
